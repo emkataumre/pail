@@ -25,14 +25,6 @@ export interface ExecResult {
     timedOut: boolean;
 }
 
-export type Outcome = "merged" | "needs-human";
-
-export interface TaskResult {
-    issue: number;
-    outcome: Outcome;
-    reason?: string;
-}
-
 export interface RunReport {
     merged: number[];
     needsHuman: { issue: number; reason: string }[];

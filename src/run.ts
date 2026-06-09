@@ -27,7 +27,7 @@ export interface Deps {
 }
 
 function tail(s: string, n = 1500): string {
-    return s.length > n ? s.slice(-n) : s;
+    return s.length > n ? "…(truncated)\n" + s.slice(-n) : s;
 }
 
 export async function runLoop(repoRoot: string, deps: Deps): Promise<RunReport> {
