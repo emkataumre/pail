@@ -1,0 +1,37 @@
+// src/config.test.ts
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { loadConfig } from "./config";
+
+let dir: string;
+beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "pail-cfg-"));
+    mkdirSync(join(dir, ".pail"));
+});
+afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+function writeConfig(obj: unknown) {
+    writeFileSync(join(dir, ".pail", "config.json"), JSON.stringify(obj));
+}
+
+describe("loadConfig", () => {
+    it("fills defaults around the required fields", () => {
+        writeConfig({ trunkBranch: "main", integrationBranch: "integration/pail", checkCommand: "npm run check" });
+        const cfg = loadConfig(dir);
+        expect(cfg.afkLabel).toBe("afk");
+        expect(cfg.humanLabel).toBe("pail-needs-human");
+        expect(cfg.claudeArgs).toEqual(["--permission-mode", "auto"]);
+        expect(cfg.checkTimeoutMs).toBe(180000);
+    });
+
+    it("throws a helpful error when a required field is missing", () => {
+        writeConfig({ trunkBranch: "main" });
+        expect(() => loadConfig(dir)).toThrow(/integrationBranch/);
+    });
+
+    it("throws when the file is absent", () => {
+        expect(() => loadConfig(dir + "-nope")).toThrow(/config/);
+    });
+});
