@@ -1,0 +1,12 @@
+{
+  "trunkBranch": "main",
+  "integrationBranch": "integration/pail",
+  "afkLabel": "afk",
+  "humanLabel": "pail-needs-human",
+  "checkCommand": "npm run check",
+  "checkTimeoutMs": 180000,
+  "maxIterations": 10,
+  "maxConsecutiveFailures": 3,
+  "branchPrefix": "pail",
+  "claudeArgs": ["--permission-mode", "auto"]
+}
