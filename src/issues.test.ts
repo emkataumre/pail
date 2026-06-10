@@ -1,6 +1,6 @@
 // src/issues.test.ts
 import { describe, it, expect, vi } from "vitest";
-import { getNextTask, closeTask, flagForHuman, completeWithoutClosing } from "./issues";
+import { getNextTask, closeTask, flagForHuman, completeWithoutClosing, parseAcceptance } from "./issues";
 import type { Config, ExecResult } from "./types";
 
 const cfg = { afkLabel: "afk", humanLabel: "pail-needs-human" } as Config;
@@ -139,5 +139,81 @@ describe("completeWithoutClosing (closeMode: comment)", () => {
         expect(exec).toHaveBeenNthCalledWith(1, "gh", ["issue", "comment", "7", "--body", "done summary"]);
         expect(exec).toHaveBeenNthCalledWith(2, "gh", ["issue", "edit", "7", "--remove-label", "pail-afk"]);
         expect(exec.mock.calls.flat(2)).not.toContain("close");
+    });
+});
+
+describe("parseAcceptance", () => {
+    // Build a body whose `## Acceptance` section holds a single fenced sh block of `inner` lines.
+    const block = (...inner: string[]) => ["## Acceptance", "```sh", ...inner, "```"].join("\n");
+
+    it("returns the ordered command list from a well-formed sh block", () => {
+        const body = block("npm run check", 'grep -q "parseAcceptance" src/issues.ts');
+        expect(parseAcceptance(body)).toEqual(["npm run check", 'grep -q "parseAcceptance" src/issues.ts']);
+    });
+
+    it("preserves command order", () => {
+        expect(parseAcceptance(block("a", "b", "c"))).toEqual(["a", "b", "c"]);
+    });
+
+    it("drops blank lines and #-comment lines, ignoring surrounding prose", () => {
+        const body = [
+            "Some intro prose.",
+            "",
+            "## Acceptance",
+            "Run these to prove it:",
+            "```sh",
+            "# first verify the build",
+            "npm run check",
+            "",
+            "  grep -q foo bar  ",
+            "```",
+            "",
+            "Trailing prose.",
+        ].join("\n");
+        expect(parseAcceptance(body)).toEqual(["npm run check", "grep -q foo bar"]);
+    });
+
+    it("returns [] when there is no ## Acceptance section", () => {
+        expect(parseAcceptance("Just a description.\n\nNo acceptance here.")).toEqual([]);
+    });
+
+    it("returns [] for an empty block", () => {
+        expect(parseAcceptance(block())).toEqual([]);
+        expect(parseAcceptance(block("", "# only a comment", ""))).toEqual([]);
+    });
+
+    it("returns [] for an empty body", () => {
+        expect(parseAcceptance("")).toEqual([]);
+    });
+
+    it("does not match the ## Acceptance criteria heading", () => {
+        const body = ["## Acceptance criteria", "```sh", "should-not-run", "```"].join("\n");
+        expect(parseAcceptance(body)).toEqual([]);
+    });
+
+    it("picks the ## Acceptance block, not an earlier ## Acceptance criteria block", () => {
+        const body = [
+            "## Acceptance criteria",
+            "- [ ] some prose criterion",
+            "",
+            "## Acceptance",
+            "```sh",
+            "real-cmd --flag",
+            "```",
+        ].join("\n");
+        expect(parseAcceptance(body)).toEqual(["real-cmd --flag"]);
+    });
+
+    it("ignores a fenced block that lives under a later heading, not under ## Acceptance", () => {
+        const body = [
+            "## Acceptance",
+            "no block here, just prose",
+            "",
+            "## Notes",
+            "```sh",
+            "should-not-run",
+            "```",
+        ].join("\n");
+        expect(parseAcceptance(body)).toEqual([]);
     });
 });
