@@ -14,7 +14,7 @@ export interface Deps {
     loadConfig: (repoRoot: string) => Config;
     ensureBranch: (repoRoot: string, name: string, from: string) => Promise<void>;
     checkoutBranch: (repoRoot: string, name: string) => Promise<void>;
-    getNextTask: (cfg: Config) => Promise<Task | null>;
+    getNextTask: (cfg: Config, mergedThisRun: number[]) => Promise<Task | null>;
     buildPrompt: (repoRoot: string, task: Task, cfg: Config) => string;
     createWorktree: (repoRoot: string, from: string, branch: string) => Promise<string>;
     runSetup: (worktreePath: string, command: string, timeoutMs: number) => Promise<{ ok: boolean; output: string }>;
@@ -64,7 +64,7 @@ export async function runLoop(repoRoot: string, deps: Deps): Promise<RunReport> 
         if (iterations >= cfg.maxIterations) { stoppedBy = "maxIterations"; break; }
         if (consecutiveFailures >= cfg.maxConsecutiveFailures) { stoppedBy = "circuitBreaker"; break; }
 
-        const task = await deps.getNextTask(cfg);
+        const task = await deps.getNextTask(cfg, [...merged]);
         if (!task) { stoppedBy = "drained"; break; }
         iterations++;
 
