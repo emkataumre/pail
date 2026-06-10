@@ -26,6 +26,32 @@ Every version must preserve the v1 invariants:
 
 ---
 
+## v1 hardening backlog (earned in the field — independent of v2/v3)
+
+Each of these was earned by a real failure, not speculation. They are small and touch v1 modules only.
+
+1. **Log the failing check's output.** `runCheck` discards stdout/stderr; a red check reaches the
+   needs-human summary as just "check failed". Cost us a full investigation on Inact #6690 (2026-06-10):
+   the work later proved fine by eye, but *why* Pail rejected it was unrecoverable. Fix: capture the
+   check output and include its tail in the flag-for-human comment, next to the agent output tail.
+   Touches `check.ts` (return output) + `run.ts` (include in `fail(...)`).
+
+2. **`setupCommand` — prepare the worktree before the agent starts.** A fresh worktree has no
+   node_modules, so the *agent's own* first check run is the slow one (dependency installs, 10+ min) —
+   longer than the agent's Bash tool can wait (10-min cap). Inact #6690 (2026-06-10): the agent finished
+   the implementation, backgrounded the check, said "I'll wait for the completion notification", and the
+   session ended — uncommitted. Earned earlier by wings #29 (agent lost time self-installing). Fix: optional
+   `setupCommand` in config, run by `worktree.ts` right after `git worktree add`, before the agent spawns.
+
+3. **Crash-resume: adopt or prune orphan worktrees on startup.** A hard interrupt (Windows-update reboot,
+   wings 2026-06-10) leaves `.pail/worktrees/pail-issue-N` + its branch behind while the issue stays
+   eligible — the next run re-picks it and `git worktree add -b` dies on the branch collision (fatal exit 2).
+   Fix: on startup, detect leftover `pail/*` branches + worktrees and remove them (the safety-net commit
+   means nothing of value lives only there... verify that before deleting) so an interrupted drain resumes
+   hands-free.
+
+---
+
 ## v2 — Docker isolation
 
 ### Goal
