@@ -1,7 +1,7 @@
 // src/run.ts
 import type { Config, Task, RunReport } from "./types";
 import { loadConfig as realLoadConfig } from "./config";
-import { ensureBranch as realEnsureBranch, checkoutBranch as realCheckoutBranch, createWorktree as realCreateWorktree, removeWorktree as realRemoveWorktree, runSetup as realRunSetup } from "./worktree";
+import { ensureBranch as realEnsureBranch, checkoutBranch as realCheckoutBranch, createWorktree as realCreateWorktree, removeWorktree as realRemoveWorktree, runSetup as realRunSetup, pruneOrphans as realPruneOrphans } from "./worktree";
 import { getNextTask as realGetNextTask, closeTask as realCloseTask, flagForHuman as realFlagForHuman, completeWithoutClosing } from "./issues";
 import { getNextTaskMd, closeTaskMd, flagForHumanMd } from "./tasksMd";
 import { buildPrompt as realBuildPrompt } from "./prompt";
@@ -19,6 +19,7 @@ export interface Deps {
     buildPrompt: (repoRoot: string, task: Task, cfg: Config) => string;
     createWorktree: (repoRoot: string, from: string, branch: string) => Promise<string>;
     runSetup: (worktreePath: string, command: string, timeoutMs: number) => Promise<{ ok: boolean; output: string }>;
+    pruneOrphans: (repoRoot: string, integrationBranch: string, branchPrefix: string) => Promise<{ branch: string; worktree: string | null; unmergedCommits: number; tipSha: string }[]>;
     runAgent: (worktreePath: string, prompt: string, cfg: Config) => Promise<{ ok: boolean; output: string }>;
     commitAll: (repoRoot: string, message: string) => Promise<void>;
     runCheck: (worktreePath: string, cfg: Config) => Promise<{ green: boolean; timedOut: boolean; output: string }>;
@@ -37,6 +38,16 @@ export async function runLoop(repoRoot: string, deps: Deps): Promise<RunReport> 
     const cfg = deps.loadConfig(repoRoot);
     await deps.ensureBranch(repoRoot, cfg.integrationBranch, cfg.trunkBranch);
     await deps.checkoutBranch(repoRoot, cfg.integrationBranch);
+
+    // Crash-resume: clear orphan worktrees/branches from a prior interrupted run before the loop,
+    // so createWorktree can't collide on a leftover branch (fatal exit 2).
+    for (const o of await deps.pruneOrphans(repoRoot, cfg.integrationBranch, cfg.branchPrefix)) {
+        deps.log(
+            o.unmergedCommits > 0
+                ? `Pruned orphan ${o.branch} (${o.unmergedCommits} unmerged commit(s); tip ${o.tipSha} recoverable via 'git reflog').`
+                : `Pruned clean orphan ${o.branch}.`,
+        );
+    }
 
     const merged: number[] = [];
     const needsHuman: { issue: number; reason: string }[] = [];
@@ -126,6 +137,7 @@ export async function main(repoRoot: string): Promise<number> {
         buildPrompt: realBuildPrompt,
         createWorktree: realCreateWorktree,
         runSetup: realRunSetup,
+        pruneOrphans: realPruneOrphans,
         runAgent: realRunAgent,
         commitAll: realCommitAll,
         runCheck: realRunCheck,
