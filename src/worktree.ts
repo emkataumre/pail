@@ -34,3 +34,11 @@ export async function removeWorktree(repoRoot: string, worktreePath: string, bra
         await git(repoRoot, ["branch", "-D", branch], exec);
     }
 }
+
+// Prepare a fresh worktree before the agent runs (e.g. `npm install`): a worktree starts with no
+// gitignored deps, so without this the agent's own first check is the slow one. Runs in the worktree
+// with its own (larger) timeout — installs legitimately outlast a check.
+export async function runSetup(worktreePath: string, command: string, timeoutMs: number, exec: ExecFn = run): Promise<{ ok: boolean; output: string }> {
+    const res = await exec(command, [], { cwd: worktreePath, timeoutMs, shell: true });
+    return { ok: res.code === 0 && !res.timedOut, output: `${res.stdout}\n${res.stderr}`.trim() };
+}

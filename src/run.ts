@@ -1,8 +1,9 @@
 // src/run.ts
 import type { Config, Task, RunReport } from "./types";
 import { loadConfig as realLoadConfig } from "./config";
-import { ensureBranch as realEnsureBranch, checkoutBranch as realCheckoutBranch, createWorktree as realCreateWorktree, removeWorktree as realRemoveWorktree } from "./worktree";
-import { getNextTask as realGetNextTask, closeTask as realCloseTask, flagForHuman as realFlagForHuman } from "./issues";
+import { ensureBranch as realEnsureBranch, checkoutBranch as realCheckoutBranch, createWorktree as realCreateWorktree, removeWorktree as realRemoveWorktree, runSetup as realRunSetup } from "./worktree";
+import { getNextTask as realGetNextTask, closeTask as realCloseTask, flagForHuman as realFlagForHuman, completeWithoutClosing } from "./issues";
+import { getNextTaskMd, closeTaskMd, flagForHumanMd } from "./tasksMd";
 import { buildPrompt as realBuildPrompt } from "./prompt";
 import { runAgent as realRunAgent } from "./agent";
 import { runCheck as realRunCheck } from "./check";
@@ -16,9 +17,10 @@ export interface Deps {
     getNextTask: (cfg: Config) => Promise<Task | null>;
     buildPrompt: (repoRoot: string, task: Task, cfg: Config) => string;
     createWorktree: (repoRoot: string, from: string, branch: string) => Promise<string>;
+    runSetup: (worktreePath: string, command: string, timeoutMs: number) => Promise<{ ok: boolean; output: string }>;
     runAgent: (worktreePath: string, prompt: string, cfg: Config) => Promise<{ ok: boolean; output: string }>;
     commitAll: (repoRoot: string, message: string) => Promise<void>;
-    runCheck: (worktreePath: string, cfg: Config) => Promise<{ green: boolean; timedOut: boolean }>;
+    runCheck: (worktreePath: string, cfg: Config) => Promise<{ green: boolean; timedOut: boolean; output: string }>;
     mergeInto: (repoRoot: string, taskBranch: string, target: string) => Promise<{ merged: boolean; conflict: boolean }>;
     closeTask: (issue: number, comment: string) => Promise<void>;
     flagForHuman: (issue: number, label: string, comment: string) => Promise<void>;
@@ -40,11 +42,15 @@ export async function runLoop(repoRoot: string, deps: Deps): Promise<RunReport> 
     let consecutiveFailures = 0;
     let iterations = 0;
 
-    const fail = async (task: Task, branch: string, path: string, reason: string, detail: string) => {
+    const fail = async (task: Task, branch: string, path: string, reason: string, outputs: { label: string; output: string }[]) => {
+        const blocks = outputs
+            .filter((o) => o.output.trim())
+            .map((o) => `## ${o.label} (tail)\n\n\`\`\`\n${tail(o.output)}\n\`\`\``)
+            .join("\n\n");
         const comment = formatSummary({
             plainEnglish: `Pail could not finish #${task.number} (${task.title}) on its own.`,
             whyItMatters: `Needs a human decision before it can land. Reason: ${reason}.`,
-            detail: `## What happened\n${reason}\n\n## Agent output (tail)\n\n\`\`\`\n${tail(detail)}\n\`\`\``,
+            detail: `## What happened\n${reason}${blocks ? `\n\n${blocks}` : ""}`,
         });
         await deps.flagForHuman(task.number, cfg.humanLabel, comment);
         await deps.removeWorktree(repoRoot, path, branch, true); // keep branch for inspection
@@ -66,20 +72,31 @@ export async function runLoop(repoRoot: string, deps: Deps): Promise<RunReport> 
         deps.log(`#${task.number}: ${task.title}`);
         const path = await deps.createWorktree(repoRoot, cfg.integrationBranch, branch);
 
+        if (cfg.setupCommand) {
+            const setup = await deps.runSetup(path, cfg.setupCommand, cfg.setupTimeoutMs);
+            if (!setup.ok) {
+                await fail(task, branch, path, "setup command failed", [{ label: "Setup output", output: setup.output }]);
+                continue;
+            }
+        }
+
         const prompt = deps.buildPrompt(repoRoot, task, cfg);
         const agent = await deps.runAgent(path, prompt, cfg);
         await deps.commitAll(path, `pail: work on #${task.number} ${task.title}`);
 
-        if (!agent.ok) { await fail(task, branch, path, "agent did not complete", agent.output); continue; }
+        if (!agent.ok) { await fail(task, branch, path, "agent did not complete", [{ label: "Agent output", output: agent.output }]); continue; }
 
         const check = await deps.runCheck(path, cfg);
         if (!check.green) {
-            await fail(task, branch, path, check.timedOut ? "check timed out (hang)" : "check failed", agent.output);
+            await fail(task, branch, path, check.timedOut ? "check timed out (hang)" : "check failed", [
+                { label: "Agent output", output: agent.output },
+                { label: "Check output", output: check.output },
+            ]);
             continue;
         }
 
         const m = await deps.mergeInto(repoRoot, branch, cfg.integrationBranch);
-        if (m.conflict) { await fail(task, branch, path, "merge conflict", agent.output); continue; }
+        if (m.conflict) { await fail(task, branch, path, "merge conflict", [{ label: "Agent output", output: agent.output }]); continue; }
 
         const comment = formatSummary({
             plainEnglish: `Implemented #${task.number}: ${task.title}.`,
@@ -97,19 +114,26 @@ export async function runLoop(repoRoot: string, deps: Deps): Promise<RunReport> 
 }
 
 export async function main(repoRoot: string): Promise<number> {
+    const cfg = realLoadConfig(repoRoot);
+    const markdown = cfg.taskSource === "markdown";
     const deps: Deps = {
-        loadConfig: realLoadConfig,
+        loadConfig: () => cfg,
         ensureBranch: realEnsureBranch,
         checkoutBranch: realCheckoutBranch,
-        getNextTask: realGetNextTask,
+        getNextTask: markdown ? async () => getNextTaskMd(repoRoot) : realGetNextTask,
         buildPrompt: realBuildPrompt,
         createWorktree: realCreateWorktree,
+        runSetup: realRunSetup,
         runAgent: realRunAgent,
         commitAll: realCommitAll,
         runCheck: realRunCheck,
         mergeInto: realMergeInto,
-        closeTask: realCloseTask,
-        flagForHuman: realFlagForHuman,
+        closeTask: markdown
+            ? async (n, c) => closeTaskMd(repoRoot, n, c)
+            : cfg.closeMode === "comment"
+              ? async (n, c) => completeWithoutClosing(n, cfg.afkLabel, c)
+              : realCloseTask,
+        flagForHuman: markdown ? async (n, _label, c) => flagForHumanMd(repoRoot, n, c) : realFlagForHuman,
         removeWorktree: realRemoveWorktree,
         log: (m) => console.log(`[pail] ${m}`),
     };

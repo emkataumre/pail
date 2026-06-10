@@ -1,10 +1,15 @@
 export interface Config {
     trunkBranch: string;
     integrationBranch: string;
+    taskSource: "github" | "markdown";
     afkLabel: string;
     humanLabel: string;
+    blockedLabel: string;
+    closeMode: "close" | "comment";
     checkCommand: string;
     checkTimeoutMs: number;
+    setupCommand?: string;
+    setupTimeoutMs: number;
     maxIterations: number;
     maxConsecutiveFailures: number;
     branchPrefix: string;

@@ -23,7 +23,43 @@ describe("loadConfig", () => {
         expect(cfg.afkLabel).toBe("afk");
         expect(cfg.humanLabel).toBe("pail-needs-human");
         expect(cfg.claudeArgs).toEqual(["--permission-mode", "auto"]);
-        expect(cfg.checkTimeoutMs).toBe(180000);
+        expect(cfg.checkTimeoutMs).toBe(600000);
+        expect(cfg.setupTimeoutMs).toBe(1200000);
+        expect(cfg.setupCommand).toBeUndefined();
+    });
+
+    it("defaults taskSource to github", () => {
+        writeConfig({ trunkBranch: "main", integrationBranch: "integration/pail", checkCommand: "npm run check" });
+        expect(loadConfig(dir).taskSource).toBe("github");
+    });
+
+    it("accepts taskSource markdown", () => {
+        writeConfig({ trunkBranch: "main", integrationBranch: "integration/pail", checkCommand: "npm run check", taskSource: "markdown" });
+        expect(loadConfig(dir).taskSource).toBe("markdown");
+    });
+
+    it("defaults blockedLabel and closeMode", () => {
+        writeConfig({ trunkBranch: "main", integrationBranch: "integration/pail", checkCommand: "npm run check" });
+        const cfg = loadConfig(dir);
+        expect(cfg.blockedLabel).toBe("blocked");
+        expect(cfg.closeMode).toBe("close");
+    });
+
+    it("accepts closeMode comment and a custom blockedLabel", () => {
+        writeConfig({ trunkBranch: "main", integrationBranch: "integration/pail", checkCommand: "npm run check", closeMode: "comment", blockedLabel: "pail-blocked" });
+        const cfg = loadConfig(dir);
+        expect(cfg.closeMode).toBe("comment");
+        expect(cfg.blockedLabel).toBe("pail-blocked");
+    });
+
+    it("rejects an unknown closeMode", () => {
+        writeConfig({ trunkBranch: "main", integrationBranch: "integration/pail", checkCommand: "npm run check", closeMode: "yolo" });
+        expect(() => loadConfig(dir)).toThrow(/closeMode/);
+    });
+
+    it("rejects an unknown taskSource", () => {
+        writeConfig({ trunkBranch: "main", integrationBranch: "integration/pail", checkCommand: "npm run check", taskSource: "jira" });
+        expect(() => loadConfig(dir)).toThrow(/taskSource/);
     });
 
     it("throws a helpful error when a required field is missing", () => {

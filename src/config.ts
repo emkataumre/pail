@@ -4,9 +4,13 @@ import { join } from "node:path";
 import type { Config } from "./types";
 
 const DEFAULTS = {
+    taskSource: "github" as Config["taskSource"],
     afkLabel: "afk",
     humanLabel: "pail-needs-human",
-    checkTimeoutMs: 180000,
+    blockedLabel: "blocked",
+    closeMode: "close" as Config["closeMode"],
+    checkTimeoutMs: 600000, // 10min
+    setupTimeoutMs: 1200000, // 20min — installs legitimately outlast a check; generous so a cold install never spuriously times out
     maxIterations: 10,
     maxConsecutiveFailures: 3,
     branchPrefix: "pail",
@@ -32,6 +36,14 @@ export function loadConfig(repoRoot: string): Config {
 
     for (const field of ["trunkBranch", "integrationBranch", "checkCommand"] as const) {
         if (!parsed[field]) throw new Error(`Pail: config is missing required "${field}".`);
+    }
+
+    if (parsed.taskSource && parsed.taskSource !== "github" && parsed.taskSource !== "markdown") {
+        throw new Error(`Pail: config taskSource must be "github" or "markdown", got "${parsed.taskSource}".`);
+    }
+
+    if (parsed.closeMode && parsed.closeMode !== "close" && parsed.closeMode !== "comment") {
+        throw new Error(`Pail: config closeMode must be "close" or "comment", got "${parsed.closeMode}".`);
     }
 
     return { ...DEFAULTS, ...parsed } as Config;

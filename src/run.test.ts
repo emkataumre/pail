@@ -5,8 +5,9 @@ import type { Config, Task } from "./types";
 
 const cfg = {
     trunkBranch: "main", integrationBranch: "integration/pail",
-    afkLabel: "afk", humanLabel: "pail-needs-human",
-    checkCommand: "c", checkTimeoutMs: 1000, maxIterations: 10,
+    taskSource: "github", afkLabel: "afk", humanLabel: "pail-needs-human",
+    blockedLabel: "blocked", closeMode: "close",
+    checkCommand: "c", checkTimeoutMs: 1000, setupTimeoutMs: 1200000, maxIterations: 10,
     maxConsecutiveFailures: 2, branchPrefix: "pail", claudeArgs: [],
 } as Config;
 
@@ -24,7 +25,8 @@ function baseDeps(over: Partial<Deps>): Deps {
         createWorktree: vi.fn(async () => "/wt"),
         runAgent: vi.fn(async () => ({ ok: true, output: "" })),
         commitAll: vi.fn(async () => {}),
-        runCheck: vi.fn(async () => ({ green: true, timedOut: false })),
+        runSetup: vi.fn(async () => ({ ok: true, output: "" })),
+        runCheck: vi.fn(async () => ({ green: true, timedOut: false, output: "" })),
         mergeInto: vi.fn(async () => ({ merged: true, conflict: false })),
         closeTask: vi.fn(async () => {}),
         flagForHuman: vi.fn(async () => {}),
@@ -52,13 +54,46 @@ describe("runLoop", () => {
         let served = false;
         const deps = baseDeps({
             getNextTask: vi.fn(async () => (served ? null : ((served = true), task(14)))),
-            runCheck: vi.fn(async () => ({ green: false, timedOut: false })),
+            runCheck: vi.fn(async () => ({ green: false, timedOut: false, output: "" })),
         });
         const report = await runLoop("/repo", deps);
         expect(deps.mergeInto).not.toHaveBeenCalled();
         expect(deps.flagForHuman).toHaveBeenCalledWith(14, "pail-needs-human", expect.stringContaining("check"));
         expect(deps.removeWorktree).toHaveBeenCalledWith("/repo", "/wt", "pail/issue-14", true);
         expect(report.needsHuman[0].issue).toBe(14);
+    });
+
+    it("includes the check output tail in the needs-human comment when the check fails", async () => {
+        let served = false;
+        const deps = baseDeps({
+            getNextTask: vi.fn(async () => (served ? null : ((served = true), task(15)))),
+            runCheck: vi.fn(async () => ({ green: false, timedOut: false, output: "TSError: boom on line 42" })),
+        });
+        await runLoop("/repo", deps);
+        expect(deps.flagForHuman).toHaveBeenCalledWith(
+            15,
+            "pail-needs-human",
+            expect.stringContaining("TSError: boom on line 42"),
+        );
+    });
+
+    it("runs setupCommand before the agent and skips the agent + flags the issue if setup fails", async () => {
+        let served = false;
+        const setupCfg = { ...cfg, setupCommand: "npm ci", setupTimeoutMs: 1200000 } as Config;
+        const deps = baseDeps({
+            loadConfig: () => setupCfg,
+            getNextTask: vi.fn(async () => (served ? null : ((served = true), task(16)))),
+            runSetup: vi.fn(async () => ({ ok: false, output: "npm ERR! lockfile mismatch" })),
+        });
+        const report = await runLoop("/repo", deps);
+        expect(deps.runSetup).toHaveBeenCalledWith("/wt", "npm ci", 1200000);
+        expect(deps.runAgent).not.toHaveBeenCalled();
+        expect(deps.flagForHuman).toHaveBeenCalledWith(
+            16,
+            "pail-needs-human",
+            expect.stringContaining("npm ERR! lockfile mismatch"),
+        );
+        expect(report.needsHuman[0].issue).toBe(16);
     });
 
     it("stops on the circuit breaker after N consecutive failures", async () => {
