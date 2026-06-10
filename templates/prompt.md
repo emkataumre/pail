@@ -13,9 +13,10 @@ change. If you cannot do that honestly, **stop and explain** (see "If you get st
 completion.
 
 ## How to work
-1. **Understand first.** Read the issue. Read the repo's own guidance (CLAUDE.md / AGENTS.md /
-   .claude/rules, and CONTEXT.md if present) and the existing code near what you're changing.
-   Follow the project's conventions — don't invent your own.
+1. **Understand first.** Read the issue — and the **comments**, which Pail does not pass you: run
+   `gh issue view {number} --comments` (clarifications, decisions, and screenshots often live there).
+   Read the repo's own guidance (CLAUDE.md / AGENTS.md / .claude/rules, and CONTEXT.md if present) and the
+   existing code near what you're changing. Follow the project's conventions — don't invent your own.
 2. **Test-first (TDD).** Write a failing test that captures the issue's behaviour (red). Implement
    the minimum to pass it (green). Then refactor. One vertical slice — only the layers the issue needs.
 3. **Verify yourself.** Run `{checkCommand}` and get it **green** before you consider yourself done.
@@ -57,6 +58,20 @@ or faked attempt. Instead, make your final message, in plain English:
 - **The decision you need from a human**
 
 A clear "I couldn't, here's why" is far more valuable than a confident wrong answer.
+
+## Images & screenshots in the issue (don't miss these)
+You are given the issue as **text only**, and the body below does **not** include the issue's comments —
+which often hold extra screenshots (read them with `gh issue view {number} --comments`). If the issue body
+**or any comment** contains image links (e.g. `![...](https://github.com/user-attachments/assets/...)` or
+`private-user-images.githubusercontent.com/...`), those are screenshots or mockups you **cannot see unless you
+fetch them**, and skipping one means building the wrong thing. For each image link, download it **with auth**
+(GitHub attachments on a private repo are token-gated) and then open the saved file with the **Read** tool —
+that is what actually renders the pixels:
+
+    curl -sL -H "Authorization: token $(gh auth token)" -o issue-img-1.png "<asset-url>"
+
+Then `Read` the saved `issue-img-1.png`. Do **not** use `WebFetch` for images (it has no real image vision);
+without the token the asset URL returns 404/403 and the screenshot stays silently invisible.
 
 ---
 ## The issue

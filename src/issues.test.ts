@@ -18,6 +18,16 @@ describe("getNextTask", () => {
         expect(task?.number).toBe(12);
     });
 
+    it("skips issues already flagged for a human (pail-needs-human)", async () => {
+        const list = JSON.stringify([
+            { number: 12, title: "needs human", body: "", labels: [{ name: "afk" }, { name: "pail-needs-human" }] },
+            { number: 15, title: "fresh", body: "", labels: [{ name: "afk" }] },
+        ]);
+        const exec = vi.fn(async () => ok(list));
+        const task = await getNextTask(cfg, exec);
+        expect(task?.number).toBe(15);
+    });
+
     it("returns null when nothing is eligible", async () => {
         const exec = vi.fn(async () => ok("[]"));
         expect(await getNextTask(cfg, exec)).toBeNull();

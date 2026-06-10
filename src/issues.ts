@@ -21,7 +21,7 @@ export async function getNextTask(cfg: Config, exec: ExecFn = run): Promise<Task
 
     const issues = JSON.parse(res.stdout || "[]") as GhIssue[];
     const eligible = issues
-        .filter((i) => !i.labels.some((l) => l.name === "blocked"))
+        .filter((i) => !i.labels.some((l) => l.name === "blocked" || l.name === cfg.humanLabel))
         .sort((a, b) => a.number - b.number);
 
     const first = eligible[0];
