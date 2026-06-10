@@ -1,4 +1,5 @@
-# Pail 🪣
+# Pail 
+<img width="350" height="350" alt="image" src="https://github.com/user-attachments/assets/adec89bd-f349-4acb-a7d1-f3e946442244" />
 
 A minimal, legible autonomous coding loop: runs a `claude` agent through your GitHub `afk` issues
 one at a time, each isolated in a git worktree, gated by your repo's own check command, merging
