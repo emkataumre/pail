@@ -6,6 +6,7 @@
   "bin": { "pail": "run.ts" },
   "scripts": {
     "start": "tsx run.ts",
+    "promote": "tsx promote.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
