@@ -26,6 +26,7 @@ function baseDeps(over: Partial<Deps>): Deps {
         runAgent: vi.fn(async () => ({ ok: true, output: "" })),
         commitAll: vi.fn(async () => {}),
         runSetup: vi.fn(async () => ({ ok: true, output: "" })),
+        pruneOrphans: vi.fn(async () => []),
         runCheck: vi.fn(async () => ({ green: true, timedOut: false, output: "" })),
         mergeInto: vi.fn(async () => ({ merged: true, conflict: false })),
         closeTask: vi.fn(async () => {}),
@@ -48,6 +49,17 @@ describe("runLoop", () => {
         expect(deps.removeWorktree).toHaveBeenCalledWith("/repo", "/wt", "pail/issue-12", false);
         expect(report.merged).toEqual([12]);
         expect(report.stoppedBy).toBe("drained");
+    });
+
+    it("prunes orphan worktrees on startup and warns about unmerged work", async () => {
+        const logs: string[] = [];
+        const deps = baseDeps({
+            pruneOrphans: vi.fn(async () => [{ branch: "pail/issue-8", worktree: "/wt8", unmergedCommits: 2, tipSha: "abc1234" }]),
+            log: (m) => logs.push(m),
+        });
+        await runLoop("/repo", deps);
+        expect(deps.pruneOrphans).toHaveBeenCalledWith("/repo", "integration/pail", "pail");
+        expect(logs.some((l) => l.includes("pail/issue-8") && l.includes("abc1234") && l.includes("reflog"))).toBe(true);
     });
 
     it("threads merged-this-run into getNextTask (so Blocked-by can release dependents)", async () => {
