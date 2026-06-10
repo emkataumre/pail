@@ -14,6 +14,7 @@ export interface Config {
     maxConsecutiveFailures: number;
     branchPrefix: string;
     claudeArgs: string[];
+    model?: string;
 }
 
 export interface Task {

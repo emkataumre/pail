@@ -20,4 +20,21 @@ describe("runAgent", () => {
         expect(out.ok).toBe(false);
         expect(out.output).toContain("boom");
     });
+
+    it("passes --model before claudeArgs when cfg.model is set", async () => {
+        const withModel = { ...cfg, model: "claude-haiku-4-5" } as Config;
+        const exec = vi.fn(async () => res(0, "done"));
+        await runAgent("/wt", "do the thing", withModel, exec);
+        expect(exec).toHaveBeenCalledWith(
+            "claude",
+            ["-p", "do the thing", "--model", "claude-haiku-4-5", "--permission-mode", "auto"],
+            { cwd: "/wt" },
+        );
+    });
+
+    it("omits --model entirely when cfg.model is unset", async () => {
+        const exec = vi.fn(async () => res(0, "done"));
+        await runAgent("/wt", "do the thing", cfg, exec);
+        expect(exec).toHaveBeenCalledWith("claude", ["-p", "do the thing", "--permission-mode", "auto"], { cwd: "/wt" });
+    });
 });
