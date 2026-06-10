@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "./exec";
-import { ensureBranch, checkoutBranch, createWorktree, removeWorktree, runSetup } from "./worktree";
+import { ensureBranch, checkoutBranch, createWorktree, removeWorktree, runSetup, pruneOrphans } from "./worktree";
 
 const NODE = process.execPath;
 
@@ -57,5 +57,40 @@ describe("runSetup", () => {
         const r = await runSetup(path, `"${NODE}" -e "console.error('boom'); process.exit(1)"`, 5000);
         expect(r.ok).toBe(false);
         expect(r.output).toContain("boom");
+    });
+});
+
+describe("pruneOrphans", () => {
+    it("removes orphan worktrees + branches, reporting any unmerged work", async () => {
+        await ensureBranch(repo, "integration/pail", "main");
+        await checkoutBranch(repo, "integration/pail");
+
+        // Clean orphan: a worktree + branch with no commits beyond integration (crash before any commit).
+        const cleanPath = await createWorktree(repo, "integration/pail", "pail/issue-9");
+
+        // Dirty orphan: a worktree + branch carrying one unmerged commit (agent committed, then crashed).
+        const dirtyPath = await createWorktree(repo, "integration/pail", "pail/issue-8");
+        writeFileSync(join(dirtyPath, "wip.txt"), "wip");
+        await git(["add", "-A"], dirtyPath);
+        await git(["commit", "-m", "wip"], dirtyPath);
+
+        const pruned = await pruneOrphans(repo, "integration/pail", "pail");
+
+        // both worktrees + branches are gone
+        expect(existsSync(cleanPath)).toBe(false);
+        expect(existsSync(dirtyPath)).toBe(false);
+        expect((await git(["branch", "--list", "pail/*"])).stdout.trim()).toBe("");
+
+        // reported, with the unmerged count + recoverable tip sha
+        const byBranch = Object.fromEntries(pruned.map((p) => [p.branch, p]));
+        expect(byBranch["pail/issue-9"].unmergedCommits).toBe(0);
+        expect(byBranch["pail/issue-8"].unmergedCommits).toBe(1);
+        expect(byBranch["pail/issue-8"].tipSha).toMatch(/^[0-9a-f]{7,}$/);
+    });
+
+    it("is a no-op when there are no orphans", async () => {
+        await ensureBranch(repo, "integration/pail", "main");
+        await checkoutBranch(repo, "integration/pail");
+        expect(await pruneOrphans(repo, "integration/pail", "pail")).toEqual([]);
     });
 });
