@@ -14,7 +14,7 @@ type PromoteConfig = Pick<Config, "trunkBranch" | "integrationBranch" | "branchP
 
 export const PROMOTE_BRANCH = "pail-promote";
 
-export async function promote(repoRoot: string, botRemote: string, cfg: PromoteConfig, exec: ExecFn = run): Promise<PromoteResult> {
+export async function promote(repoRoot: string, botRemote: string, cfg: PromoteConfig, exec: ExecFn = run, bodyOverride?: string): Promise<PromoteResult> {
     const git = (args: string[]) => exec("git", ["-C", repoRoot, ...args]);
 
     await git(["fetch", botRemote]);
@@ -39,7 +39,10 @@ export async function promote(repoRoot: string, botRemote: string, cfg: PromoteC
     if (push.code !== 0) throw new Error(`Pail promote: push failed: ${push.stderr.trim()}`);
 
     const title = `Pail: promote ${merged.length} issue${merged.length === 1 ? "" : "s"}`;
-    const body = ["Autonomous batch promotion of Pail's merged work — review and merge to land it on trunk.", "", ...merged.map((n) => `Closes #${n}`)].join("\n");
+    // The morning report (when the bot produced one) is the PR body; the Closes #N footer is always
+    // appended so merging the promotion PR still closes the drained issues.
+    const intro = bodyOverride ?? "Autonomous batch promotion of Pail's merged work — review and merge to land it on trunk.";
+    const body = [intro, "", ...merged.map((n) => `Closes #${n}`)].join("\n");
     const pr = await exec("gh", ["pr", "create", "--base", cfg.trunkBranch, "--head", PROMOTE_BRANCH, "--title", title, "--body", body], { cwd: repoRoot });
     if (pr.code !== 0) throw new Error(`Pail promote: gh pr create failed: ${pr.stderr.trim()}`);
 

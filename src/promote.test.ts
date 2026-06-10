@@ -54,4 +54,21 @@ describe("promote", () => {
         expect(calls.some((c) => c.includes("push"))).toBe(false);
         expect(calls.some((c) => c.startsWith("gh"))).toBe(false);
     });
+
+    it("uses bodyOverride as the PR body, still appending the Closes #N footer", async () => {
+        const calls: string[] = [];
+        const exec = vi.fn(async (cmd: string, args: string[] = []) => {
+            calls.push([cmd, ...args].join(" "));
+            if (cmd === "git" && args.includes("log")) return ok("Merge branch 'pail/issue-7' into integration/pail\n");
+            if (cmd === "gh") return ok("https://github.com/emkataumre/pail/pull/99\n");
+            return ok();
+        });
+
+        await promote("/op", "bot", cfg, exec, "## Morning report\nrendered body line");
+
+        const gh = calls.find((c) => c.startsWith("gh pr create"))!;
+        expect(gh).toContain("## Morning report");
+        expect(gh).toContain("rendered body line");
+        expect(gh).toContain("Closes #7");
+    });
 });

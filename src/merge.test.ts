@@ -1,10 +1,10 @@
 // src/merge.test.ts
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "./exec";
-import { commitAll, mergeInto } from "./merge";
+import { commitAll, mergeInto, diffStat } from "./merge";
 
 let repo: string;
 async function git(args: string[], cwd = repo) {
@@ -60,5 +60,23 @@ describe("commitAll + mergeInto", () => {
         await git(["checkout", "integration/pail"]);
         await commitAll(repo, "nothing"); // should not throw
         expect(true).toBe(true);
+    });
+});
+
+describe("diffStat", () => {
+    const out = (stdout: string, code = 0) => vi.fn(async () => ({ code, stdout, stderr: "", timedOut: false }));
+
+    it("renders git shortstat as a compact +N -M", async () => {
+        const exec = out(" 3 files changed, 40 insertions(+), 2 deletions(-)\n");
+        expect(await diffStat("/r", "integration/pail", "pail/issue-1", exec)).toBe("+40 -2");
+    });
+
+    it("handles insertions-only and deletions-only", async () => {
+        expect(await diffStat("/r", "a", "b", out(" 1 file changed, 5 insertions(+)\n"))).toBe("+5 -0");
+        expect(await diffStat("/r", "a", "b", out(" 1 file changed, 7 deletions(-)\n"))).toBe("+0 -7");
+    });
+
+    it("returns an empty string on git failure", async () => {
+        expect(await diffStat("/r", "a", "b", out("", 1))).toBe("");
     });
 });

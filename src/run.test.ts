@@ -29,7 +29,9 @@ function baseDeps(over: Partial<Deps>): Deps {
         runSetup: vi.fn(async () => ({ ok: true, output: "" })),
         pruneOrphans: vi.fn(async () => []),
         runCheck: vi.fn(async () => ({ green: true, timedOut: false, output: "" })),
+        runAcceptance: vi.fn(async () => ({ ok: true, output: "" })),
         mergeInto: vi.fn(async () => ({ merged: true, conflict: false })),
+        diffStat: vi.fn(async () => "+0 -0"),
         closeTask: vi.fn(async () => {}),
         flagForHuman: vi.fn(async () => {}),
         removeWorktree: vi.fn(async () => {}),
@@ -137,5 +139,65 @@ describe("runLoop", () => {
         const report = await runLoop("/repo", deps);
         expect(report.stoppedBy).toBe("circuitBreaker");
         expect(deps.flagForHuman).toHaveBeenCalledTimes(2); // maxConsecutiveFailures
+    });
+
+    const accTask = (n: number): Task => ({ number: n, title: `t${n}`, body: "## Acceptance\n```sh\nnpm run check\n```", labels: ["afk"] });
+
+    it("flags the issue for a human when its acceptance block fails — does not merge", async () => {
+        let served = false;
+        const deps = baseDeps({
+            getNextTask: vi.fn(async () => (served ? null : ((served = true), accTask(21)))),
+            runAcceptance: vi.fn(async () => ({ ok: false, failedCommand: "npm run check", output: "acc boom" })),
+        });
+        const report = await runLoop("/repo", deps);
+        expect(deps.runAcceptance).toHaveBeenCalledWith("/wt", ["npm run check"], cfg.checkTimeoutMs);
+        expect(deps.mergeInto).not.toHaveBeenCalled();
+        expect(deps.flagForHuman).toHaveBeenCalledWith(21, "pail-needs-human", expect.stringContaining("npm run check"));
+        expect(report.needsHuman[0].issue).toBe(21);
+    });
+
+    it("runs a passing acceptance block, then merges", async () => {
+        let served = false;
+        const deps = baseDeps({
+            getNextTask: vi.fn(async () => (served ? null : ((served = true), accTask(22)))),
+            runAcceptance: vi.fn(async () => ({ ok: true, output: "ok" })),
+        });
+        const report = await runLoop("/repo", deps);
+        expect(deps.runAcceptance).toHaveBeenCalledOnce();
+        expect(deps.mergeInto).toHaveBeenCalledOnce();
+        expect(report.merged).toEqual([22]);
+    });
+
+    it("skips acceptance entirely when the issue has no acceptance block", async () => {
+        let served = false;
+        const deps = baseDeps({
+            getNextTask: vi.fn(async () => (served ? null : ((served = true), task(23)))),
+        });
+        const report = await runLoop("/repo", deps);
+        expect(deps.runAcceptance).not.toHaveBeenCalled();
+        expect(deps.mergeInto).toHaveBeenCalledOnce();
+        expect(report.merged).toEqual([23]);
+    });
+
+    it("captures an enriched per-task record for a merged task", async () => {
+        let served = false;
+        const deps = baseDeps({
+            getNextTask: vi.fn(async () => (served ? null : ((served = true), task(30)))),
+            diffStat: vi.fn(async () => "+12 -3"),
+        });
+        const report = await runLoop("/repo", deps);
+        expect(report.tasks).toEqual([
+            { number: 30, title: "t30", status: "merged", acceptance: "na", diffstat: "+12 -3" },
+        ]);
+    });
+
+    it("captures a needs-human record (with the reason) when a task is flagged", async () => {
+        let served = false;
+        const deps = baseDeps({
+            getNextTask: vi.fn(async () => (served ? null : ((served = true), task(31)))),
+            runCheck: vi.fn(async () => ({ green: false, timedOut: false, output: "boom" })),
+        });
+        const report = await runLoop("/repo", deps);
+        expect(report.tasks?.[0]).toMatchObject({ number: 31, status: "needs-human", reason: "check failed", acceptance: "na" });
     });
 });

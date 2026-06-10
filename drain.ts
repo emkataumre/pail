@@ -6,6 +6,14 @@ import { spawn } from "node:child_process";
 import { run } from "./src/exec";
 import { loadConfig } from "./src/config";
 import { promote } from "./src/promote";
+import { renderReport } from "./src/report";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { isPromoted, resyncPlan } from "./src/promoted";
+
+// Staged self-resync: while true, the resync logs its verdict but never performs the destructive
+// reset. Flip to false only after the dry-run verdict is trusted across promoted + unpromoted drains.
+const RESYNC_DRY_RUN = true;
 
 function drainBot(botPath: string): Promise<number> {
     return new Promise((resolve) => {
@@ -25,12 +33,31 @@ async function main() {
         throw new Error(`no '${botRemote}' remote in ${repoRoot}. Add it: git remote add ${botRemote} <path-to-bot-clone>`);
     }
     const botPath = url.stdout.trim();
+    const cfg = loadConfig(botPath);
+
+    // Staged self-resync (DRY-RUN): is the previous drain's integration already on trunk? Log the
+    // verdict; never reset while RESYNC_DRY_RUN. Best-effort — a gh/git hiccup must not block a drain.
+    try {
+        await run("git", ["-C", repoRoot, "fetch", botRemote]);
+        await run("git", ["-C", repoRoot, "fetch", "origin"]);
+        const plan = resyncPlan(await isPromoted(repoRoot, `${botRemote}/${cfg.integrationBranch}`), RESYNC_DRY_RUN);
+        console.log(`[drain] resync: ${plan.message}`);
+    } catch (e) {
+        console.log(`[drain] resync check skipped: ${e instanceof Error ? e.message : String(e)}`);
+    }
 
     console.log(`[drain] draining the bot in ${botPath} ...`);
     const code = await drainBot(botPath);
     console.log(`[drain] bot exited (code ${code}); promoting ...`);
 
-    const res = await promote(repoRoot, botRemote, loadConfig(botPath));
+    // The bot persists its run report; render it as the promotion-PR body (falls back to the
+    // default body if the file is missing — e.g. an older bot that didn't write one).
+    let bodyOverride: string | undefined;
+    try {
+        bodyOverride = renderReport(JSON.parse(readFileSync(join(botPath, ".pail", "last-run-report.json"), "utf8")));
+    } catch { /* no report file → promote uses its default body */ }
+
+    const res = await promote(repoRoot, botRemote, cfg, undefined, bodyOverride);
     if (res.conflict) {
         console.error(`[drain] ${res.reason}`);
         process.exit(1);
