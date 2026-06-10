@@ -4,7 +4,9 @@ import { mkdtempSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "./exec";
-import { ensureBranch, checkoutBranch, createWorktree, removeWorktree } from "./worktree";
+import { ensureBranch, checkoutBranch, createWorktree, removeWorktree, runSetup } from "./worktree";
+
+const NODE = process.execPath;
 
 let repo: string;
 async function git(args: string[], cwd = repo) {
@@ -39,5 +41,21 @@ describe("worktree lifecycle", () => {
         expect(existsSync(path)).toBe(false);
         const branches = (await git(["branch", "--list", "pail/issue-1"])).stdout.trim();
         expect(branches).toBe("");
+    });
+});
+
+describe("runSetup", () => {
+    it("runs the setup command inside the worktree and reports success", async () => {
+        const path = await createWorktree(repo, "main", "pail/issue-2");
+        const r = await runSetup(path, `"${NODE}" -e "require('fs').writeFileSync('setup-marker.txt','ok')"`, 5000);
+        expect(r.ok).toBe(true);
+        expect(existsSync(join(path, "setup-marker.txt"))).toBe(true);
+    });
+
+    it("reports failure and captures output when the setup command exits non-zero", async () => {
+        const path = await createWorktree(repo, "main", "pail/issue-3");
+        const r = await runSetup(path, `"${NODE}" -e "console.error('boom'); process.exit(1)"`, 5000);
+        expect(r.ok).toBe(false);
+        expect(r.output).toContain("boom");
     });
 });

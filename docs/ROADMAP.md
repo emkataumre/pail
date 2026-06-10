@@ -30,6 +30,8 @@ Every version must preserve the v1 invariants:
 
 Each of these was earned in real operation — by a failure, or (item 4) a hazard spotted before it fired. Not speculation.
 
+> **Status (2026-06-10):** items **1** (check-output logging) and **2** (`setupCommand`) are **shipped** — hand-built and TDD'd while standing up Pail's own dogfood loop (`self-hardening` branch). Items 3 and 4 remain.
+
 1. **Log the failing check's output.** `runCheck` discards stdout/stderr; a red check reaches the
    needs-human summary as just "check failed". Cost us a full investigation on Inact #6690 (2026-06-10):
    the work later proved fine by eye, but *why* Pail rejected it was unrecoverable. Fix: capture the

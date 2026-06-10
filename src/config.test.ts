@@ -23,7 +23,9 @@ describe("loadConfig", () => {
         expect(cfg.afkLabel).toBe("afk");
         expect(cfg.humanLabel).toBe("pail-needs-human");
         expect(cfg.claudeArgs).toEqual(["--permission-mode", "auto"]);
-        expect(cfg.checkTimeoutMs).toBe(180000);
+        expect(cfg.checkTimeoutMs).toBe(600000);
+        expect(cfg.setupTimeoutMs).toBe(1200000);
+        expect(cfg.setupCommand).toBeUndefined();
     });
 
     it("defaults taskSource to github", () => {

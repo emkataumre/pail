@@ -8,6 +8,8 @@ export interface Config {
     closeMode: "close" | "comment";
     checkCommand: string;
     checkTimeoutMs: number;
+    setupCommand?: string;
+    setupTimeoutMs: number;
     maxIterations: number;
     maxConsecutiveFailures: number;
     branchPrefix: string;

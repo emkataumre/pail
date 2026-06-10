@@ -9,7 +9,8 @@ const DEFAULTS = {
     humanLabel: "pail-needs-human",
     blockedLabel: "blocked",
     closeMode: "close" as Config["closeMode"],
-    checkTimeoutMs: 180000,
+    checkTimeoutMs: 600000, // 10min
+    setupTimeoutMs: 1200000, // 20min — installs legitimately outlast a check; generous so a cold install never spuriously times out
     maxIterations: 10,
     maxConsecutiveFailures: 3,
     branchPrefix: "pail",
