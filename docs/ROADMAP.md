@@ -177,6 +177,14 @@ Each task remains **fully isolated** — its own worktree + its own container �
 
 ---
 
+## Beyond v3 — the successor (planned, see its own spec)
+
+**The planner pipeline:** spec → `/to-prd` → `/to-issues` → issue DAG (Blocked-by + executable
+Acceptance blocks + afk label) → Pail drains topologically → morning report → human promotes.
+Pail stays the executor core; the planner ships as skills, not code. Full vision + rung ladder:
+`docs/specs/2026-06-10-successor-planner-pipeline.md`. Subsumes the parking-lot items "dependency
+DAG scheduling" and parts of "composing with verification.md" below.
+
 ## Beyond v3 (parking lot — not scheduled)
 
 - **More sandbox providers:** Podman (rootless), Vercel microVMs — generalize `agent.ts` once a second provider is actually wanted.
