@@ -9,6 +9,7 @@ import { runAgent as realRunAgent } from "./agent";
 import { runCheck as realRunCheck } from "./check";
 import { commitAll as realCommitAll, mergeInto as realMergeInto } from "./merge";
 import { formatSummary } from "./humanSummary";
+import { summarize } from "./report";
 
 export interface Deps {
     loadConfig: (repoRoot: string) => Config;
@@ -120,8 +121,9 @@ export async function runLoop(repoRoot: string, deps: Deps): Promise<RunReport> 
         consecutiveFailures = 0;
     }
 
-    deps.log(`Done. merged=${merged.length} needs-human=${needsHuman.length} (${stoppedBy}).`);
-    return { merged, needsHuman, stoppedBy };
+    const report: RunReport = { merged, needsHuman, stoppedBy };
+    deps.log(summarize(report));
+    return report;
 }
 
 export async function main(repoRoot: string): Promise<number> {
