@@ -3,6 +3,7 @@ import type { Config, Task, RunReport } from "./types";
 import { loadConfig as realLoadConfig } from "./config";
 import { ensureBranch as realEnsureBranch, checkoutBranch as realCheckoutBranch, createWorktree as realCreateWorktree, removeWorktree as realRemoveWorktree } from "./worktree";
 import { getNextTask as realGetNextTask, closeTask as realCloseTask, flagForHuman as realFlagForHuman } from "./issues";
+import { getNextTaskMd, closeTaskMd, flagForHumanMd } from "./tasksMd";
 import { buildPrompt as realBuildPrompt } from "./prompt";
 import { runAgent as realRunAgent } from "./agent";
 import { runCheck as realRunCheck } from "./check";
@@ -97,19 +98,21 @@ export async function runLoop(repoRoot: string, deps: Deps): Promise<RunReport> 
 }
 
 export async function main(repoRoot: string): Promise<number> {
+    const cfg = realLoadConfig(repoRoot);
+    const markdown = cfg.taskSource === "markdown";
     const deps: Deps = {
-        loadConfig: realLoadConfig,
+        loadConfig: () => cfg,
         ensureBranch: realEnsureBranch,
         checkoutBranch: realCheckoutBranch,
-        getNextTask: realGetNextTask,
+        getNextTask: markdown ? async () => getNextTaskMd(repoRoot) : realGetNextTask,
         buildPrompt: realBuildPrompt,
         createWorktree: realCreateWorktree,
         runAgent: realRunAgent,
         commitAll: realCommitAll,
         runCheck: realRunCheck,
         mergeInto: realMergeInto,
-        closeTask: realCloseTask,
-        flagForHuman: realFlagForHuman,
+        closeTask: markdown ? async (n, c) => closeTaskMd(repoRoot, n, c) : realCloseTask,
+        flagForHuman: markdown ? async (n, _label, c) => flagForHumanMd(repoRoot, n, c) : realFlagForHuman,
         removeWorktree: realRemoveWorktree,
         log: (m) => console.log(`[pail] ${m}`),
     };

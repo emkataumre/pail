@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { Config } from "./types";
 
 const DEFAULTS = {
+    taskSource: "github" as Config["taskSource"],
     afkLabel: "afk",
     humanLabel: "pail-needs-human",
     checkTimeoutMs: 180000,
@@ -32,6 +33,10 @@ export function loadConfig(repoRoot: string): Config {
 
     for (const field of ["trunkBranch", "integrationBranch", "checkCommand"] as const) {
         if (!parsed[field]) throw new Error(`Pail: config is missing required "${field}".`);
+    }
+
+    if (parsed.taskSource && parsed.taskSource !== "github" && parsed.taskSource !== "markdown") {
+        throw new Error(`Pail: config taskSource must be "github" or "markdown", got "${parsed.taskSource}".`);
     }
 
     return { ...DEFAULTS, ...parsed } as Config;

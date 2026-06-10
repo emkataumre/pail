@@ -1,6 +1,7 @@
 export interface Config {
     trunkBranch: string;
     integrationBranch: string;
+    taskSource: "github" | "markdown";
     afkLabel: string;
     humanLabel: string;
     checkCommand: string;

@@ -26,6 +26,21 @@ describe("loadConfig", () => {
         expect(cfg.checkTimeoutMs).toBe(180000);
     });
 
+    it("defaults taskSource to github", () => {
+        writeConfig({ trunkBranch: "main", integrationBranch: "integration/pail", checkCommand: "npm run check" });
+        expect(loadConfig(dir).taskSource).toBe("github");
+    });
+
+    it("accepts taskSource markdown", () => {
+        writeConfig({ trunkBranch: "main", integrationBranch: "integration/pail", checkCommand: "npm run check", taskSource: "markdown" });
+        expect(loadConfig(dir).taskSource).toBe("markdown");
+    });
+
+    it("rejects an unknown taskSource", () => {
+        writeConfig({ trunkBranch: "main", integrationBranch: "integration/pail", checkCommand: "npm run check", taskSource: "jira" });
+        expect(() => loadConfig(dir)).toThrow(/taskSource/);
+    });
+
     it("throws a helpful error when a required field is missing", () => {
         writeConfig({ trunkBranch: "main" });
         expect(() => loadConfig(dir)).toThrow(/integrationBranch/);
