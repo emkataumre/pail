@@ -4,6 +4,8 @@ export interface Config {
     taskSource: "github" | "markdown";
     afkLabel: string;
     humanLabel: string;
+    blockedLabel: string;
+    closeMode: "close" | "comment";
     checkCommand: string;
     checkTimeoutMs: number;
     maxIterations: number;

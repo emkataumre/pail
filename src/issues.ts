@@ -21,7 +21,7 @@ export async function getNextTask(cfg: Config, exec: ExecFn = run): Promise<Task
 
     const issues = JSON.parse(res.stdout || "[]") as GhIssue[];
     const eligible = issues
-        .filter((i) => !i.labels.some((l) => l.name === "blocked" || l.name === cfg.humanLabel))
+        .filter((i) => !i.labels.some((l) => l.name === cfg.blockedLabel || l.name === cfg.humanLabel))
         .sort((a, b) => a.number - b.number);
 
     const first = eligible[0];
@@ -32,6 +32,15 @@ export async function getNextTask(cfg: Config, exec: ExecFn = run): Promise<Task
 export async function closeTask(issue: number, comment: string, exec: ExecFn = run): Promise<void> {
     const res = await exec("gh", ["issue", "close", String(issue), "--comment", comment]);
     if (res.code !== 0) throw new Error(`Pail: gh issue close ${issue} failed: ${res.stderr}`);
+}
+
+// closeMode "comment": post the summary and retire the issue from the pool (remove afk label),
+// but leave it open — the human closes it at promotion time, after the work reaches trunk.
+export async function completeWithoutClosing(issue: number, afkLabel: string, comment: string, exec: ExecFn = run): Promise<void> {
+    const c = await exec("gh", ["issue", "comment", String(issue), "--body", comment]);
+    if (c.code !== 0) throw new Error(`Pail: gh issue comment ${issue} failed: ${c.stderr}`);
+    const e = await exec("gh", ["issue", "edit", String(issue), "--remove-label", afkLabel]);
+    if (e.code !== 0) throw new Error(`Pail: gh issue edit ${issue} failed: ${e.stderr}`);
 }
 
 export async function flagForHuman(issue: number, label: string, comment: string, exec: ExecFn = run): Promise<void> {

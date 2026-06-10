@@ -36,6 +36,25 @@ describe("loadConfig", () => {
         expect(loadConfig(dir).taskSource).toBe("markdown");
     });
 
+    it("defaults blockedLabel and closeMode", () => {
+        writeConfig({ trunkBranch: "main", integrationBranch: "integration/pail", checkCommand: "npm run check" });
+        const cfg = loadConfig(dir);
+        expect(cfg.blockedLabel).toBe("blocked");
+        expect(cfg.closeMode).toBe("close");
+    });
+
+    it("accepts closeMode comment and a custom blockedLabel", () => {
+        writeConfig({ trunkBranch: "main", integrationBranch: "integration/pail", checkCommand: "npm run check", closeMode: "comment", blockedLabel: "pail-blocked" });
+        const cfg = loadConfig(dir);
+        expect(cfg.closeMode).toBe("comment");
+        expect(cfg.blockedLabel).toBe("pail-blocked");
+    });
+
+    it("rejects an unknown closeMode", () => {
+        writeConfig({ trunkBranch: "main", integrationBranch: "integration/pail", checkCommand: "npm run check", closeMode: "yolo" });
+        expect(() => loadConfig(dir)).toThrow(/closeMode/);
+    });
+
     it("rejects an unknown taskSource", () => {
         writeConfig({ trunkBranch: "main", integrationBranch: "integration/pail", checkCommand: "npm run check", taskSource: "jira" });
         expect(() => loadConfig(dir)).toThrow(/taskSource/);

@@ -2,7 +2,7 @@
 import type { Config, Task, RunReport } from "./types";
 import { loadConfig as realLoadConfig } from "./config";
 import { ensureBranch as realEnsureBranch, checkoutBranch as realCheckoutBranch, createWorktree as realCreateWorktree, removeWorktree as realRemoveWorktree } from "./worktree";
-import { getNextTask as realGetNextTask, closeTask as realCloseTask, flagForHuman as realFlagForHuman } from "./issues";
+import { getNextTask as realGetNextTask, closeTask as realCloseTask, flagForHuman as realFlagForHuman, completeWithoutClosing } from "./issues";
 import { getNextTaskMd, closeTaskMd, flagForHumanMd } from "./tasksMd";
 import { buildPrompt as realBuildPrompt } from "./prompt";
 import { runAgent as realRunAgent } from "./agent";
@@ -111,7 +111,11 @@ export async function main(repoRoot: string): Promise<number> {
         commitAll: realCommitAll,
         runCheck: realRunCheck,
         mergeInto: realMergeInto,
-        closeTask: markdown ? async (n, c) => closeTaskMd(repoRoot, n, c) : realCloseTask,
+        closeTask: markdown
+            ? async (n, c) => closeTaskMd(repoRoot, n, c)
+            : cfg.closeMode === "comment"
+              ? async (n, c) => completeWithoutClosing(n, cfg.afkLabel, c)
+              : realCloseTask,
         flagForHuman: markdown ? async (n, _label, c) => flagForHumanMd(repoRoot, n, c) : realFlagForHuman,
         removeWorktree: realRemoveWorktree,
         log: (m) => console.log(`[pail] ${m}`),

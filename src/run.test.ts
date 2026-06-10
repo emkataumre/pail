@@ -6,6 +6,7 @@ import type { Config, Task } from "./types";
 const cfg = {
     trunkBranch: "main", integrationBranch: "integration/pail",
     taskSource: "github", afkLabel: "afk", humanLabel: "pail-needs-human",
+    blockedLabel: "blocked", closeMode: "close",
     checkCommand: "c", checkTimeoutMs: 1000, maxIterations: 10,
     maxConsecutiveFailures: 2, branchPrefix: "pail", claudeArgs: [],
 } as Config;

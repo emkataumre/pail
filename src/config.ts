@@ -7,6 +7,8 @@ const DEFAULTS = {
     taskSource: "github" as Config["taskSource"],
     afkLabel: "afk",
     humanLabel: "pail-needs-human",
+    blockedLabel: "blocked",
+    closeMode: "close" as Config["closeMode"],
     checkTimeoutMs: 180000,
     maxIterations: 10,
     maxConsecutiveFailures: 3,
@@ -37,6 +39,10 @@ export function loadConfig(repoRoot: string): Config {
 
     if (parsed.taskSource && parsed.taskSource !== "github" && parsed.taskSource !== "markdown") {
         throw new Error(`Pail: config taskSource must be "github" or "markdown", got "${parsed.taskSource}".`);
+    }
+
+    if (parsed.closeMode && parsed.closeMode !== "close" && parsed.closeMode !== "comment") {
+        throw new Error(`Pail: config closeMode must be "close" or "comment", got "${parsed.closeMode}".`);
     }
 
     return { ...DEFAULTS, ...parsed } as Config;
