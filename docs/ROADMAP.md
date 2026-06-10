@@ -71,6 +71,12 @@ Each of these was earned in real operation — by a failure, or (item 4) a hazar
    agent docs), so a bare clone has none of it, and absolute paths in config/prompt/check must be
    repointed at the new clone. Touches no v1 module — this is tooling *around* the loop (a wrapper
    script + setup script in `templates/`), which is exactly why it's safe to do early.
+   *Note (2026-06-10, unfleshed):* evaluate **Claude Code Routines** (`/schedule`) as the trigger
+   instead of the OS scheduler — caveat spotted on first read: routines run full sessions on
+   *Anthropic's hosted infra*, not the local machine, so they can't reach the local clone, the
+   untracked `.pail/` setup, or the local toolchain — and pointing hosted infra at the work repo is
+   a governance question. Possibly useful as a poller/notifier rather than the runner; daily caps
+   per plan (Pro 5 / Max 15) and usage counts against the subscription.
 
 ---
 
@@ -190,4 +196,8 @@ DAG scheduling" and parts of "composing with verification.md" below.
 - **More sandbox providers:** Podman (rootless), Vercel microVMs — generalize `agent.ts` once a second provider is actually wanted.
 - **PR-per-task hand-off:** an alternative to the batch integration branch (push each green task + `gh pr create`). Considered and deferred in v1.
 - **Dependency DAG scheduling:** order tasks by issue `Depends on` / `Blocked by` instead of just the `blocked` label.
+- **Model choice as a cost lever (unfleshed, 2026-06-10):** unattended drains get expensive on the
+  default model. `claudeArgs` already passes through to the agent — add per-repo `--model`
+  selection first; later, per-task (the planner could assign a model per slice: cheap model for
+  mechanical slices, big model for judgment-heavy ones — same logic as subagent model tiering).
 - **Composing with `verification.md`:** if a target repo opts into the runtime-verification system, those verifiers run inside its `check` — so Pail's "green" gets stronger for free. No Pail change needed; just a stronger gate.
