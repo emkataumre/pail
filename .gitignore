@@ -1,3 +1,6 @@
 node_modules/
 .pail/worktrees/
 *.log
+
+# Claude Code local settings (may contain account tokens) — never commit
+.claude/settings.local.json
