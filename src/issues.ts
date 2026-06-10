@@ -44,6 +44,9 @@ export async function getNextTask(cfg: Config, mergedThisRun: number[] = [], exe
     if (res.code !== 0) throw new Error(`Pail: gh issue list failed: ${res.stderr}`);
 
     const candidates = (JSON.parse(res.stdout || "[]") as GhIssue[])
+        // Drop issues already merged this run: GitHub's search index lags, so `gh issue list` can still
+        // return a just-merged issue as afk — without this it would be re-picked and the agent re-run.
+        .filter((i) => !mergedThisRun.includes(i.number))
         .filter((i) => !i.labels.some((l) => l.name === cfg.blockedLabel || l.name === cfg.humanLabel))
         .sort((a, b) => a.number - b.number);
 
