@@ -28,7 +28,7 @@ Every version must preserve the v1 invariants:
 
 ## v1 hardening backlog (earned in the field — independent of v2/v3)
 
-Each of these was earned by a real failure, not speculation. They are small and touch v1 modules only.
+Each of these was earned in real operation — by a failure, or (item 4) a hazard spotted before it fired. Not speculation.
 
 1. **Log the failing check's output.** `runCheck` discards stdout/stderr; a red check reaches the
    needs-human summary as just "check failed". Cost us a full investigation on Inact #6690 (2026-06-10):
@@ -49,6 +49,28 @@ Each of these was earned by a real failure, not speculation. They are small and 
    Fix: on startup, detect leftover `pail/*` branches + worktrees and remove them (the safety-net commit
    means nothing of value lives only there... verify that before deleting) so an interrupted drain resumes
    hands-free.
+
+4. **Unattended runs: dedicated clone + scheduled wrapper.** Pail's first act is
+   `git checkout <integrationBranch>` *in the clone it's launched from* — fine when a human launches it,
+   a disaster on a timer: a scheduled run firing while the operator is mid-edit in that clone switches
+   their branch and rewrites files under their editor. Identified during the Inact GitHub-mode design
+   (2026-06-10), before it bit. The fix is structural, not behavioral — Pail gets its **own clone** it
+   can never collide in, plus a thin scheduled wrapper (Windows Task Scheduler or equivalent) that:
+   - **syncs trunk first**: `fetch` + `reset --hard origin/<trunk>` — safe *only* because no human WIP
+     ever lives in this clone;
+   - **pre-checks the label** (`gh issue list --label <afkLabel> --limit 1`) and exits in ~1s when the
+     pool is empty, so an empty poll never touches the repo;
+   - runs **single-instance** (scheduler setting or lock file), logs to a file, and sets `GH_TOKEN`
+     **per-process** — never `gh auth switch`, which would flip the operator's interactive account.
+   Work flows *out* via a **local remote**: the operator's real clone adds the Pail clone as a remote
+   (`git remote add pail <path>`), fetches `integration/pail` at promotion time, and runs the usual
+   supervised promotion from their own clone with their own credentials. The Pail clone gets **no push
+   credentials at all** (`git remote set-url --push origin DISABLED`) — "Pail never pushes" becomes
+   physically impossible rather than promised. Needs a `setup-pail-clone` script: everything that makes
+   a clone Pail-ready is untracked by design (`.pail/`, `.git/info/exclude` guards, possibly repo-local
+   agent docs), so a bare clone has none of it, and absolute paths in config/prompt/check must be
+   repointed at the new clone. Touches no v1 module — this is tooling *around* the loop (a wrapper
+   script + setup script in `templates/`), which is exactly why it's safe to do early.
 
 ---
 
