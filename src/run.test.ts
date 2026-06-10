@@ -1,6 +1,7 @@
 // src/run.test.ts
 import { describe, it, expect, vi } from "vitest";
 import { runLoop, type Deps } from "./run";
+import { summarize } from "./report";
 import type { Config, Task } from "./types";
 
 const cfg = {
@@ -48,6 +49,17 @@ describe("runLoop", () => {
         expect(deps.removeWorktree).toHaveBeenCalledWith("/repo", "/wt", "pail/issue-12", false);
         expect(report.merged).toEqual([12]);
         expect(report.stoppedBy).toBe("drained");
+    });
+
+    it("logs the final run summary via summarize()", async () => {
+        let served = false;
+        const logs: string[] = [];
+        const deps = baseDeps({
+            getNextTask: vi.fn(async () => (served ? null : ((served = true), task(12)))),
+            log: (m) => logs.push(m),
+        });
+        const report = await runLoop("/repo", deps);
+        expect(logs).toContain(summarize(report));
     });
 
     it("threads merged-this-run into getNextTask (so Blocked-by can release dependents)", async () => {
