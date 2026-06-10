@@ -6,6 +6,9 @@ import { spawn } from "node:child_process";
 import { run } from "./src/exec";
 import { loadConfig } from "./src/config";
 import { promote } from "./src/promote";
+import { renderReport } from "./src/report";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 function drainBot(botPath: string): Promise<number> {
     return new Promise((resolve) => {
@@ -30,7 +33,14 @@ async function main() {
     const code = await drainBot(botPath);
     console.log(`[drain] bot exited (code ${code}); promoting ...`);
 
-    const res = await promote(repoRoot, botRemote, loadConfig(botPath));
+    // The bot persists its run report; render it as the promotion-PR body (falls back to the
+    // default body if the file is missing — e.g. an older bot that didn't write one).
+    let bodyOverride: string | undefined;
+    try {
+        bodyOverride = renderReport(JSON.parse(readFileSync(join(botPath, ".pail", "last-run-report.json"), "utf8")));
+    } catch { /* no report file → promote uses its default body */ }
+
+    const res = await promote(repoRoot, botRemote, loadConfig(botPath), undefined, bodyOverride);
     if (res.conflict) {
         console.error(`[drain] ${res.reason}`);
         process.exit(1);

@@ -1,5 +1,5 @@
 // src/run.ts
-import type { Config, Task, RunReport } from "./types";
+import type { Config, Task, RunReport, TaskReport } from "./types";
 import { loadConfig as realLoadConfig } from "./config";
 import { ensureBranch as realEnsureBranch, checkoutBranch as realCheckoutBranch, createWorktree as realCreateWorktree, removeWorktree as realRemoveWorktree, runSetup as realRunSetup, pruneOrphans as realPruneOrphans } from "./worktree";
 import { getNextTask as realGetNextTask, closeTask as realCloseTask, flagForHuman as realFlagForHuman, completeWithoutClosing, parseAcceptance } from "./issues";
@@ -8,9 +8,11 @@ import { buildPrompt as realBuildPrompt } from "./prompt";
 import { runAgent as realRunAgent } from "./agent";
 import { runAcceptance as realRunAcceptance } from "./acceptance";
 import { runCheck as realRunCheck } from "./check";
-import { commitAll as realCommitAll, mergeInto as realMergeInto } from "./merge";
+import { commitAll as realCommitAll, mergeInto as realMergeInto, diffStat as realDiffStat } from "./merge";
 import { formatSummary } from "./humanSummary";
 import { summarize } from "./report";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 
 export interface Deps {
     loadConfig: (repoRoot: string) => Config;
@@ -26,6 +28,7 @@ export interface Deps {
     runCheck: (worktreePath: string, cfg: Config) => Promise<{ green: boolean; timedOut: boolean; output: string }>;
     runAcceptance: (worktreePath: string, commands: string[], timeoutMs: number) => Promise<{ ok: boolean; failedCommand?: string; output: string }>;
     mergeInto: (repoRoot: string, taskBranch: string, target: string) => Promise<{ merged: boolean; conflict: boolean }>;
+    diffStat: (repoRoot: string, base: string, branch: string) => Promise<string>;
     closeTask: (issue: number, comment: string) => Promise<void>;
     flagForHuman: (issue: number, label: string, comment: string) => Promise<void>;
     removeWorktree: (repoRoot: string, path: string, branch: string, keepBranch: boolean) => Promise<void>;
@@ -53,10 +56,11 @@ export async function runLoop(repoRoot: string, deps: Deps): Promise<RunReport> 
 
     const merged: number[] = [];
     const needsHuman: { issue: number; reason: string }[] = [];
+    const tasks: TaskReport[] = [];
     let consecutiveFailures = 0;
     let iterations = 0;
 
-    const fail = async (task: Task, branch: string, path: string, reason: string, outputs: { label: string; output: string }[]) => {
+    const fail = async (task: Task, branch: string, path: string, reason: string, outputs: { label: string; output: string }[], acceptance: TaskReport["acceptance"] = "na") => {
         const blocks = outputs
             .filter((o) => o.output.trim())
             .map((o) => `## ${o.label} (tail)\n\n\`\`\`\n${tail(o.output)}\n\`\`\``)
@@ -69,6 +73,7 @@ export async function runLoop(repoRoot: string, deps: Deps): Promise<RunReport> 
         await deps.flagForHuman(task.number, cfg.humanLabel, comment);
         await deps.removeWorktree(repoRoot, path, branch, true); // keep branch for inspection
         needsHuman.push({ issue: task.number, reason });
+        tasks.push({ number: task.number, title: task.title, status: "needs-human", reason, acceptance, diffstat: await deps.diffStat(repoRoot, cfg.integrationBranch, branch) });
         consecutiveFailures++;
     };
 
@@ -81,6 +86,7 @@ export async function runLoop(repoRoot: string, deps: Deps): Promise<RunReport> 
         const task = await deps.getNextTask(cfg, [...merged]);
         if (!task) { stoppedBy = "drained"; break; }
         iterations++;
+        let acceptance: TaskReport["acceptance"] = "na";
 
         const branch = `${cfg.branchPrefix}/issue-${task.number}`;
         deps.log(`#${task.number}: ${task.title}`);
@@ -114,17 +120,19 @@ export async function runLoop(repoRoot: string, deps: Deps): Promise<RunReport> 
         const acceptanceCommands = parseAcceptance(task.body);
         if (acceptanceCommands.length > 0) {
             const acc = await deps.runAcceptance(path, acceptanceCommands, cfg.checkTimeoutMs);
+            acceptance = acc.ok ? "passed" : "failed";
             if (!acc.ok) {
                 await fail(task, branch, path, `acceptance failed: ${acc.failedCommand}`, [
                     { label: "Agent output", output: agent.output },
                     { label: "Acceptance output", output: acc.output },
-                ]);
+                ], acceptance);
                 continue;
             }
         }
 
+        const diffstat = await deps.diffStat(repoRoot, cfg.integrationBranch, branch);
         const m = await deps.mergeInto(repoRoot, branch, cfg.integrationBranch);
-        if (m.conflict) { await fail(task, branch, path, "merge conflict", [{ label: "Agent output", output: agent.output }]); continue; }
+        if (m.conflict) { await fail(task, branch, path, "merge conflict", [{ label: "Agent output", output: agent.output }], acceptance); continue; }
 
         const comment = formatSummary({
             plainEnglish: `Implemented #${task.number}: ${task.title}.`,
@@ -134,10 +142,11 @@ export async function runLoop(repoRoot: string, deps: Deps): Promise<RunReport> 
         await deps.closeTask(task.number, comment);
         await deps.removeWorktree(repoRoot, path, branch, false);
         merged.push(task.number);
+        tasks.push({ number: task.number, title: task.title, status: "merged", acceptance, diffstat });
         consecutiveFailures = 0;
     }
 
-    const report: RunReport = { merged, needsHuman, stoppedBy };
+    const report: RunReport = { merged, needsHuman, stoppedBy, tasks };
     deps.log(summarize(report));
     return report;
 }
@@ -159,6 +168,7 @@ export async function main(repoRoot: string): Promise<number> {
         runCheck: realRunCheck,
         runAcceptance: realRunAcceptance,
         mergeInto: realMergeInto,
+        diffStat: realDiffStat,
         closeTask: markdown
             ? async (n, c) => closeTaskMd(repoRoot, n, c)
             : cfg.closeMode === "comment"
@@ -169,5 +179,10 @@ export async function main(repoRoot: string): Promise<number> {
         log: (m) => console.log(`[pail] ${m}`),
     };
     const report = await runLoop(repoRoot, deps);
+    // Persist the run report so the operator-side drain can render it as the promotion-PR body.
+    try {
+        mkdirSync(join(repoRoot, ".pail"), { recursive: true });
+        writeFileSync(join(repoRoot, ".pail", "last-run-report.json"), JSON.stringify(report, null, 2));
+    } catch { /* report persistence is best-effort; never fail a run over it */ }
     return report.needsHuman.length > 0 ? 1 : 0;
 }
