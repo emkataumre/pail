@@ -19,3 +19,10 @@ See `docs/specs/2026-06-09-pail-v1-design.md` for the full design and `docs/plan
 
 ## Develop
 `npm run check`  (typecheck + tests)
+
+## Use cases
+So far I've used Pail in two real codebases: 
+Inact's Inact Now web platform
+AI Rådgivning's WIP AI learning platform
+
+Pail, despite being simple, has been able to autonomously turn open issues into solved problems in a safe, human-verifiable way
