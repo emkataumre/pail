@@ -9,7 +9,31 @@ interface GhIssue {
     labels: { name: string }[];
 }
 
-export async function getNextTask(cfg: Config, exec: ExecFn = run): Promise<Task | null> {
+// Parse "Blocked by #N" references from an issue body. Supports several refs on one line
+// (e.g. "Blocked by #1 and #3") and multiple such lines.
+function parseBlockedBy(body: string): number[] {
+    const nums: number[] = [];
+    for (const line of body.matchAll(/blocked by[^\n]*/gi)) {
+        for (const ref of line[0].matchAll(/#(\d+)/g)) nums.push(Number(ref[1]));
+    }
+    return nums;
+}
+
+// A blocker is satisfied if it merged earlier in this same run, or it is closed (promoted to trunk).
+// Note the deliberate gap: a blocker merged in a *previous* run but not yet closed is neither — so the
+// dependent waits. That gap *is* the cross-promotion guard (integration may have been deleted at
+// promotion before the blocker reached trunk).
+async function isClosed(n: number, exec: ExecFn): Promise<boolean> {
+    const res = await exec("gh", ["issue", "view", String(n), "--json", "state"]);
+    if (res.code !== 0) return false; // can't confirm closed -> treat as unsatisfied (dependent waits)
+    try {
+        return (JSON.parse(res.stdout) as { state?: string }).state === "CLOSED";
+    } catch {
+        return false;
+    }
+}
+
+export async function getNextTask(cfg: Config, mergedThisRun: number[] = [], exec: ExecFn = run): Promise<Task | null> {
     const res = await exec("gh", [
         "issue", "list",
         "--state", "open",
@@ -19,14 +43,22 @@ export async function getNextTask(cfg: Config, exec: ExecFn = run): Promise<Task
     ]);
     if (res.code !== 0) throw new Error(`Pail: gh issue list failed: ${res.stderr}`);
 
-    const issues = JSON.parse(res.stdout || "[]") as GhIssue[];
-    const eligible = issues
+    const candidates = (JSON.parse(res.stdout || "[]") as GhIssue[])
         .filter((i) => !i.labels.some((l) => l.name === cfg.blockedLabel || l.name === cfg.humanLabel))
         .sort((a, b) => a.number - b.number);
 
-    const first = eligible[0];
-    if (!first) return null;
-    return { number: first.number, title: first.title, body: first.body, labels: first.labels.map((l) => l.name) };
+    // Return the lowest-numbered candidate whose Blocked-by references are all satisfied.
+    for (const c of candidates) {
+        let eligible = true;
+        for (const blocker of parseBlockedBy(c.body ?? "")) {
+            if (mergedThisRun.includes(blocker)) continue;
+            if (await isClosed(blocker, exec)) continue;
+            eligible = false;
+            break;
+        }
+        if (eligible) return { number: c.number, title: c.title, body: c.body, labels: c.labels.map((l) => l.name) };
+    }
+    return null;
 }
 
 export async function closeTask(issue: number, comment: string, exec: ExecFn = run): Promise<void> {

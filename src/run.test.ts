@@ -50,6 +50,15 @@ describe("runLoop", () => {
         expect(report.stoppedBy).toBe("drained");
     });
 
+    it("threads merged-this-run into getNextTask (so Blocked-by can release dependents)", async () => {
+        let n = 0;
+        const deps = baseDeps({
+            getNextTask: vi.fn(async () => (++n === 1 ? task(12) : null)),
+        });
+        await runLoop("/repo", deps);
+        expect(deps.getNextTask).toHaveBeenNthCalledWith(2, cfg, [12]);
+    });
+
     it("flags a red task for a human, keeps the branch, does not merge", async () => {
         let served = false;
         const deps = baseDeps({

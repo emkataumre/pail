@@ -6,6 +6,16 @@ import type { Config, ExecResult } from "./types";
 const cfg = { afkLabel: "afk", humanLabel: "pail-needs-human" } as Config;
 const ok = (stdout = ""): ExecResult => ({ code: 0, stdout, stderr: "", timedOut: false });
 
+// Dispatching gh fake: answers `issue list` with the given JSON, and `issue view N --json state`
+// with the issue's state (default OPEN).
+function fakeGh(listJson: string, states: Record<number, "OPEN" | "CLOSED"> = {}) {
+    return vi.fn(async (_cmd: string, args: string[] = []) => {
+        if (args[1] === "list") return ok(listJson);
+        if (args[1] === "view") return ok(JSON.stringify({ state: states[Number(args[2])] ?? "OPEN" }));
+        return ok("");
+    });
+}
+
 describe("getNextTask", () => {
     it("returns the lowest-numbered non-blocked afk issue", async () => {
         const list = JSON.stringify([
@@ -14,7 +24,7 @@ describe("getNextTask", () => {
             { number: 13, title: "C", body: "", labels: [{ name: "afk" }, { name: "blocked" }] },
         ]);
         const exec = vi.fn(async () => ok(list));
-        const task = await getNextTask(cfg, exec);
+        const task = await getNextTask(cfg, [], exec);
         expect(task?.number).toBe(12);
     });
 
@@ -24,13 +34,13 @@ describe("getNextTask", () => {
             { number: 15, title: "fresh", body: "", labels: [{ name: "afk" }] },
         ]);
         const exec = vi.fn(async () => ok(list));
-        const task = await getNextTask(cfg, exec);
+        const task = await getNextTask(cfg, [], exec);
         expect(task?.number).toBe(15);
     });
 
     it("returns null when nothing is eligible", async () => {
         const exec = vi.fn(async () => ok("[]"));
-        expect(await getNextTask(cfg, exec)).toBeNull();
+        expect(await getNextTask(cfg, [], exec)).toBeNull();
     });
 
     it("skips issues carrying a custom blockedLabel", async () => {
@@ -40,8 +50,50 @@ describe("getNextTask", () => {
             { number: 15, title: "ready", body: "", labels: [{ name: "pail-afk" }] },
         ]);
         const exec = vi.fn(async () => ok(list));
-        const task = await getNextTask(customCfg, exec);
+        const task = await getNextTask(customCfg, [], exec);
         expect(task?.number).toBe(15);
+    });
+});
+
+describe("getNextTask — Blocked-by scheduling (Rung 1)", () => {
+    const dependent = (extra: object = {}) =>
+        JSON.stringify([{ number: 2, title: "dependent", body: "Blocked by #1", labels: [{ name: "afk" }], ...extra }]);
+
+    it("releases a dependent once its blocker has merged this run", async () => {
+        const exec = fakeGh(dependent());
+        const task = await getNextTask(cfg, [1], exec);
+        expect(task?.number).toBe(2);
+    });
+
+    it("treats a closed blocker as satisfied (cross-run)", async () => {
+        const exec = fakeGh(dependent(), { 1: "CLOSED" });
+        const task = await getNextTask(cfg, [], exec);
+        expect(task?.number).toBe(2);
+    });
+
+    it("skips a dependent whose blocker is open and not merged this run (cross-promotion guard)", async () => {
+        const exec = fakeGh(dependent(), { 1: "OPEN" });
+        expect(await getNextTask(cfg, [], exec)).toBeNull();
+    });
+
+    it("skips a blocked dependent but returns a later unblocked issue", async () => {
+        const exec = fakeGh(
+            JSON.stringify([
+                { number: 2, title: "dependent", body: "Blocked by #1", labels: [{ name: "afk" }] },
+                { number: 4, title: "free", body: "", labels: [{ name: "afk" }] },
+            ]),
+            { 1: "OPEN" },
+        );
+        const task = await getNextTask(cfg, [], exec);
+        expect(task?.number).toBe(4);
+    });
+
+    it("requires every blocker satisfied when several are listed", async () => {
+        const exec = fakeGh(
+            JSON.stringify([{ number: 5, title: "multi", body: "Blocked by #1 and #3", labels: [{ name: "afk" }] }]),
+            { 3: "OPEN" }, // #1 merged this run, #3 still open => not eligible
+        );
+        expect(await getNextTask(cfg, [1], exec)).toBeNull();
     });
 });
 
