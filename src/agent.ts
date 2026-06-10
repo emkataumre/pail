@@ -8,6 +8,7 @@ export async function runAgent(
     cfg: Config,
     exec: ExecFn = run,
 ): Promise<{ ok: boolean; output: string }> {
-    const res = await exec("claude", ["-p", prompt, ...cfg.claudeArgs], { cwd: worktreePath });
+    const modelArgs = cfg.model ? ["--model", cfg.model] : [];
+    const res = await exec("claude", ["-p", prompt, ...modelArgs, ...cfg.claudeArgs], { cwd: worktreePath });
     return { ok: res.code === 0, output: `${res.stdout}\n${res.stderr}`.trim() };
 }
