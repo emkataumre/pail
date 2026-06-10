@@ -2,10 +2,11 @@
 import type { Config, Task, RunReport } from "./types";
 import { loadConfig as realLoadConfig } from "./config";
 import { ensureBranch as realEnsureBranch, checkoutBranch as realCheckoutBranch, createWorktree as realCreateWorktree, removeWorktree as realRemoveWorktree, runSetup as realRunSetup, pruneOrphans as realPruneOrphans } from "./worktree";
-import { getNextTask as realGetNextTask, closeTask as realCloseTask, flagForHuman as realFlagForHuman, completeWithoutClosing } from "./issues";
+import { getNextTask as realGetNextTask, closeTask as realCloseTask, flagForHuman as realFlagForHuman, completeWithoutClosing, parseAcceptance } from "./issues";
 import { getNextTaskMd, closeTaskMd, flagForHumanMd } from "./tasksMd";
 import { buildPrompt as realBuildPrompt } from "./prompt";
 import { runAgent as realRunAgent } from "./agent";
+import { runAcceptance as realRunAcceptance } from "./acceptance";
 import { runCheck as realRunCheck } from "./check";
 import { commitAll as realCommitAll, mergeInto as realMergeInto } from "./merge";
 import { formatSummary } from "./humanSummary";
@@ -23,6 +24,7 @@ export interface Deps {
     runAgent: (worktreePath: string, prompt: string, cfg: Config) => Promise<{ ok: boolean; output: string }>;
     commitAll: (repoRoot: string, message: string) => Promise<void>;
     runCheck: (worktreePath: string, cfg: Config) => Promise<{ green: boolean; timedOut: boolean; output: string }>;
+    runAcceptance: (worktreePath: string, commands: string[], timeoutMs: number) => Promise<{ ok: boolean; failedCommand?: string; output: string }>;
     mergeInto: (repoRoot: string, taskBranch: string, target: string) => Promise<{ merged: boolean; conflict: boolean }>;
     closeTask: (issue: number, comment: string) => Promise<void>;
     flagForHuman: (issue: number, label: string, comment: string) => Promise<void>;
@@ -107,6 +109,20 @@ export async function runLoop(repoRoot: string, deps: Deps): Promise<RunReport> 
             continue;
         }
 
+        // Independent acceptance gate: if the issue carries a `## Acceptance` block, Pail runs it
+        // itself (test-author ≠ implementer) after the global check is green, before merging.
+        const acceptanceCommands = parseAcceptance(task.body);
+        if (acceptanceCommands.length > 0) {
+            const acc = await deps.runAcceptance(path, acceptanceCommands, cfg.checkTimeoutMs);
+            if (!acc.ok) {
+                await fail(task, branch, path, `acceptance failed: ${acc.failedCommand}`, [
+                    { label: "Agent output", output: agent.output },
+                    { label: "Acceptance output", output: acc.output },
+                ]);
+                continue;
+            }
+        }
+
         const m = await deps.mergeInto(repoRoot, branch, cfg.integrationBranch);
         if (m.conflict) { await fail(task, branch, path, "merge conflict", [{ label: "Agent output", output: agent.output }]); continue; }
 
@@ -141,6 +157,7 @@ export async function main(repoRoot: string): Promise<number> {
         runAgent: realRunAgent,
         commitAll: realCommitAll,
         runCheck: realRunCheck,
+        runAcceptance: realRunAcceptance,
         mergeInto: realMergeInto,
         closeTask: markdown
             ? async (n, c) => closeTaskMd(repoRoot, n, c)
