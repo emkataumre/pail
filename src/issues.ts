@@ -19,6 +19,32 @@ function parseBlockedBy(body: string): number[] {
     return nums;
 }
 
+// Parse the optional `## Acceptance` block from an issue body into an ordered list of shell
+// commands — the *parser* half of executable acceptance (the runner is a separate stage). It
+// finds the `## Acceptance` section (exact heading, so "## Acceptance criteria" is not it), reads
+// the single fenced `sh` block inside that section, and returns each non-empty, non-`#`-comment
+// line as one command, order preserved. No section, no block in it, or an empty block → [].
+export function parseAcceptance(body: string): string[] {
+    const lines = (body ?? "").split(/\r?\n/);
+    const start = lines.findIndex((l) => /^##\s+Acceptance\s*$/.test(l));
+    if (start === -1) return [];
+
+    const commands: string[] = [];
+    let inBlock = false;
+    for (let i = start + 1; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
+        if (!inBlock) {
+            if (/^#{1,6}\s/.test(lines[i])) break; // next section reached before any block → none here
+            if (trimmed === "```sh") inBlock = true;
+            continue;
+        }
+        if (trimmed === "```") break; // closing fence ends the block
+        if (trimmed === "" || trimmed.startsWith("#")) continue; // drop blank lines and #-comments
+        commands.push(trimmed);
+    }
+    return commands;
+}
+
 // A blocker is satisfied if it merged earlier in this same run, or it is closed (promoted to trunk).
 // Note the deliberate gap: a blocker merged in a *previous* run but not yet closed is neither — so the
 // dependent waits. That gap *is* the cross-promotion guard (integration may have been deleted at

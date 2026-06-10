@@ -12,7 +12,7 @@ export interface PromoteResult {
 
 type PromoteConfig = Pick<Config, "trunkBranch" | "integrationBranch" | "branchPrefix">;
 
-const PROMOTE_BRANCH = "pail-promote";
+export const PROMOTE_BRANCH = "pail-promote";
 
 export async function promote(repoRoot: string, botRemote: string, cfg: PromoteConfig, exec: ExecFn = run): Promise<PromoteResult> {
     const git = (args: string[]) => exec("git", ["-C", repoRoot, ...args]);
