@@ -30,3 +30,17 @@ export async function isPromoted(repoRoot: string, integrationRef: string, exec:
     const ancestry = await exec("git", ["-C", repoRoot, "merge-base", "--is-ancestor", integrationRef, latest.headRefOid]);
     return ancestry.code === 0;
 }
+
+export interface ResyncPlan {
+    reset: boolean;
+    message: string;
+}
+
+// Decide what to do with the bot's integration branch given the promoted verdict. Staged: while
+// `dryRun` is true the destructive reset is NEVER taken — we only report what we *would* do, so the
+// verdict can be trusted across a promoted and an unpromoted drain before the reset is enabled.
+export function resyncPlan(promoted: boolean, dryRun: boolean): ResyncPlan {
+    if (!promoted) return { reset: false, message: "integration not yet promoted — keeping it" };
+    if (dryRun) return { reset: false, message: "integration is promoted — would reset it to trunk (dry-run: not resetting)" };
+    return { reset: true, message: "integration is promoted — resetting it to trunk" };
+}

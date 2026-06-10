@@ -1,6 +1,6 @@
 // src/promoted.test.ts
 import { describe, it, expect, vi } from "vitest";
-import { isPromoted } from "./promoted";
+import { isPromoted, resyncPlan } from "./promoted";
 import type { ExecResult } from "./types";
 
 const ok = (stdout = "", code = 0): ExecResult => ({ code, stdout, stderr: "", timedOut: false });
@@ -87,5 +87,24 @@ describe("isPromoted", () => {
     it("throws when gh fails, rather than guessing a verdict", async () => {
         const exec = vi.fn(async (cmd: string) => (cmd === "gh" ? ok("", 1) : ok()));
         await expect(isPromoted("/bot", "integration/pail", exec)).rejects.toThrow(/gh pr list/);
+    });
+});
+
+describe("resyncPlan", () => {
+    it("keeps integration when it is not promoted (regardless of dry-run)", () => {
+        expect(resyncPlan(false, true)).toEqual({ reset: false, message: expect.stringContaining("keeping") });
+        expect(resyncPlan(false, false)).toEqual({ reset: false, message: expect.stringContaining("keeping") });
+    });
+
+    it("in dry-run, reports it WOULD reset a promoted integration but does not", () => {
+        const plan = resyncPlan(true, true);
+        expect(plan.reset).toBe(false);
+        expect(plan.message).toMatch(/would reset/i);
+    });
+
+    it("when live, resets a promoted integration", () => {
+        const plan = resyncPlan(true, false);
+        expect(plan.reset).toBe(true);
+        expect(plan.message).toMatch(/resett?ing/i);
     });
 });
