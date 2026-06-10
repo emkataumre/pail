@@ -53,6 +53,26 @@ describe("getNextTask", () => {
         const task = await getNextTask(customCfg, [], exec);
         expect(task?.number).toBe(15);
     });
+
+    it("skips an issue already merged this run even if the stale search index still lists it as afk", async () => {
+        // GitHub's search index lags: #12 was merged this run (afk label removed) but `gh issue list`
+        // can still return it. It must not be re-picked — the next eligible issue wins instead.
+        const list = JSON.stringify([
+            { number: 12, title: "just merged", body: "", labels: [{ name: "afk" }] },
+            { number: 15, title: "fresh", body: "", labels: [{ name: "afk" }] },
+        ]);
+        const exec = vi.fn(async () => ok(list));
+        const task = await getNextTask(cfg, [12], exec);
+        expect(task?.number).toBe(15);
+    });
+
+    it("returns null when the only afk issue listed was already merged this run", async () => {
+        const list = JSON.stringify([
+            { number: 12, title: "just merged", body: "", labels: [{ name: "afk" }] },
+        ]);
+        const exec = vi.fn(async () => ok(list));
+        expect(await getNextTask(cfg, [12], exec)).toBeNull();
+    });
 });
 
 describe("getNextTask — Blocked-by scheduling (Rung 1)", () => {
