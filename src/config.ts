@@ -9,6 +9,7 @@ const DEFAULTS = {
     humanLabel: "pail-needs-human",
     blockedLabel: "blocked",
     closeMode: "close" as Config["closeMode"],
+    completionComment: "summary" as Config["completionComment"],
     checkTimeoutMs: 600000, // 10min
     setupTimeoutMs: 1200000, // 20min — installs legitimately outlast a check; generous so a cold install never spuriously times out
     maxIterations: 10,
@@ -44,6 +45,10 @@ export function loadConfig(repoRoot: string): Config {
 
     if (parsed.closeMode && parsed.closeMode !== "close" && parsed.closeMode !== "comment") {
         throw new Error(`Pail: config closeMode must be "close" or "comment", got "${parsed.closeMode}".`);
+    }
+
+    if (parsed.completionComment && parsed.completionComment !== "summary" && parsed.completionComment !== "terse") {
+        throw new Error(`Pail: config completionComment must be "summary" or "terse", got "${parsed.completionComment}".`);
     }
 
     return { ...DEFAULTS, ...parsed } as Config;

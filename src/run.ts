@@ -134,11 +134,13 @@ export async function runLoop(repoRoot: string, deps: Deps): Promise<RunReport> 
         const m = await deps.mergeInto(repoRoot, branch, cfg.integrationBranch);
         if (m.conflict) { await fail(task, branch, path, "merge conflict", [{ label: "Agent output", output: agent.output }], acceptance); continue; }
 
-        const comment = formatSummary({
-            plainEnglish: `Implemented #${task.number}: ${task.title}.`,
-            whyItMatters: `Merged onto ${cfg.integrationBranch} after an independent green check.`,
-            detail: `## Testing\n\`${cfg.checkCommand}\` green.`,
-        });
+        const comment = cfg.completionComment === "terse"
+            ? `Pail: merged onto ${cfg.integrationBranch}, check green (${diffstat}).`
+            : formatSummary({
+                plainEnglish: `Implemented #${task.number}: ${task.title}.`,
+                whyItMatters: `Merged onto ${cfg.integrationBranch} after an independent green check.`,
+                detail: `## Testing\n\`${cfg.checkCommand}\` green.`,
+            });
         await deps.closeTask(task.number, comment);
         await deps.removeWorktree(repoRoot, path, branch, false);
         merged.push(task.number);

@@ -6,6 +6,7 @@ export interface Config {
     humanLabel: string;
     blockedLabel: string;
     closeMode: "close" | "comment";
+    completionComment: "summary" | "terse";
     checkCommand: string;
     checkTimeoutMs: number;
     setupCommand?: string;

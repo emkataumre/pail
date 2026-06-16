@@ -7,7 +7,7 @@ import type { Config, Task } from "./types";
 const cfg = {
     trunkBranch: "main", integrationBranch: "integration/pail",
     taskSource: "github", afkLabel: "afk", humanLabel: "pail-needs-human",
-    blockedLabel: "blocked", closeMode: "close",
+    blockedLabel: "blocked", closeMode: "close", completionComment: "summary",
     checkCommand: "c", checkTimeoutMs: 1000, setupTimeoutMs: 1200000, maxIterations: 10,
     maxConsecutiveFailures: 2, branchPrefix: "pail", claudeArgs: [],
 } as Config;
@@ -52,6 +52,19 @@ describe("runLoop", () => {
         expect(deps.removeWorktree).toHaveBeenCalledWith("/repo", "/wt", "pail/issue-12", false);
         expect(report.merged).toEqual([12]);
         expect(report.stoppedBy).toBe("drained");
+    });
+
+    it("posts a terse one-line comment when completionComment is terse", async () => {
+        let served = false;
+        const deps = baseDeps({
+            loadConfig: () => ({ ...cfg, completionComment: "terse" }),
+            getNextTask: vi.fn(async () => (served ? null : ((served = true), task(12)))),
+        });
+        await runLoop("/repo", deps);
+        const comment = (deps.closeTask as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
+        expect(comment).not.toMatch(/In plain English/);
+        expect(comment.split("\n")).toHaveLength(1);
+        expect(comment).toContain("integration/pail");
     });
 
     it("logs the final run summary via summarize()", async () => {

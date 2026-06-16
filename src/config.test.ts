@@ -45,6 +45,18 @@ describe("loadConfig", () => {
         expect(cfg.closeMode).toBe("close");
     });
 
+    it("defaults completionComment to summary and accepts terse", () => {
+        writeConfig({ trunkBranch: "main", integrationBranch: "integration/pail", checkCommand: "npm run check" });
+        expect(loadConfig(dir).completionComment).toBe("summary");
+        writeConfig({ trunkBranch: "main", integrationBranch: "integration/pail", checkCommand: "npm run check", completionComment: "terse" });
+        expect(loadConfig(dir).completionComment).toBe("terse");
+    });
+
+    it("rejects an unknown completionComment", () => {
+        writeConfig({ trunkBranch: "main", integrationBranch: "integration/pail", checkCommand: "npm run check", completionComment: "verbose" });
+        expect(() => loadConfig(dir)).toThrow(/completionComment/);
+    });
+
     it("accepts closeMode comment and a custom blockedLabel", () => {
         writeConfig({ trunkBranch: "main", integrationBranch: "integration/pail", checkCommand: "npm run check", closeMode: "comment", blockedLabel: "pail-blocked" });
         const cfg = loadConfig(dir);
